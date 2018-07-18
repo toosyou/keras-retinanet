@@ -15,7 +15,9 @@ limitations under the License.
 """
 
 import keras
+from keras.layers import Permute, Conv3D, MaxPool3D, TimeDistributed, Reshape, Conv2D
 from keras.utils import get_file
+import tensorflow as tf
 import keras_resnet
 import keras_resnet.models
 
@@ -74,7 +76,6 @@ class ResNetBackbone(Backbone):
         """
         return preprocess_image(inputs, mode='caffe')
 
-
 def resnet_retinanet(num_classes, backbone='resnet50', inputs=None, modifier=None, **kwargs):
     """ Constructs a retinanet model using a resnet backbone.
 
@@ -105,8 +106,31 @@ def resnet_retinanet(num_classes, backbone='resnet50', inputs=None, modifier=Non
     if modifier:
         resnet = modifier(resnet)
 
+    new_inputs = keras.layers.Input(shape=(None, None, 3, 16))
+    permuted = Permute((4, 1, 2, 3))(new_inputs)
+    outputs = list()
+    print(resnet.output[1:])
+    for out in resnet.output[1:]:
+        tmp = TimeDistributed(keras.Model(resnet.input, out))(permuted) # (16, ?, ?, feature_size)
+        feature_size = int(tmp.get_shape()[4])
+
+        def reshape(x): # (?, 16, ?, ?, feature_size)
+            x = Permute((2, 3, 4, 1))(x)
+            # feature_size = int(x.get_shape()[3])
+            shape = tf.shape(x)
+            x = tf.reshape(x, [shape[0], shape[1], shape[2], feature_size*16]) # (?, ?, ?, feature_size * 16)
+            return x
+
+        def cal_shape(x_shape): # (?, 16, ?, ?, feature_size)
+            return [x_shape[0], x_shape[2], x_shape[3], feature_size*16]
+
+        tmp = keras.layers.Lambda(reshape, output_shape=cal_shape)(tmp) # (?, ?, ?, feature_size * 16)
+        tmp = Conv2D(feature_size//4, 1, padding='same')(tmp)
+        outputs.append(tmp)
+    print(outputs)
+
     # create the full model
-    return retinanet.retinanet(inputs=inputs, num_classes=num_classes, backbone_layers=resnet.outputs[1:], **kwargs)
+    return retinanet.retinanet(inputs=new_inputs, num_classes=num_classes, backbone_layers=outputs, **kwargs)
 
 
 def resnet50_retinanet(num_classes, inputs=None, **kwargs):
