@@ -160,7 +160,7 @@ def anchors_for_shape(
     if ratios is None:
         ratios = np.array([0.5, 1, 2])
     if scales is None:
-        scales = np.array([2 ** (-2.0 / 3.0), 2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)])
+        scales = np.array([2 ** (-2.0 / 3.0), 2 ** 0, 2 ** (1.0 / 3.0)])
 
     if shapes_callback is None:
         shapes_callback = guess_shapes
@@ -216,7 +216,7 @@ def generate_anchors(base_size=16, ratios=None, scales=None):
         ratios = np.array([0.5, 1, 2])
 
     if scales is None:
-        scales = np.array([2 ** (-2.0 / 3.0), 2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)])
+        scales = np.array([2 ** (-2.0 / 3.0), 2 ** 0, 2 ** (1.0 / 3.0)])
 
     num_anchors = len(ratios) * len(scales)
 

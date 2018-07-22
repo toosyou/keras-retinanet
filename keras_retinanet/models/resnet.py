@@ -100,24 +100,17 @@ def custom_model(inputs): # (?, ?, 16, 1)
     outputs = list()
 
     x = inputs # (512, 512, 16, 1)
-    x = keras.layers.BatchNormalization()(x)
-    x = ConvP3D(16)(x)
+    x = ConvP3D(32)(x)
     x = keras.layers.MaxPool3D(
                         pool_size=(2, 2, 2),
                         padding='same'
                         )(x) # (256, 256, 8, 256)
 
-    x = ConvP3D(32)(x)
+    x = ConvP3D(64)(x)
     x = keras.layers.MaxPool3D(
                         pool_size=(2, 2, 2),
                         padding='same'
                         )(x) # (128, 128, 4, 256)
-
-    x = ConvP3D(64)(x)
-    x = keras.layers.MaxPool3D(
-                        pool_size=(1, 1, 2),
-                        padding='same'
-                        )(x) # (128, 128, 2, 256)
 
     outputs.append(x) # C2
 
@@ -125,22 +118,15 @@ def custom_model(inputs): # (?, ?, 16, 1)
     x = keras.layers.MaxPool3D(
                         pool_size=(2, 2, 2),
                         padding='same'
-                        )(x) # (64, 64, 1, 256)
+                        )(x) # (64, 64, 2, 256)
 
-    x = keras.layers.Reshape((64, 64, -1))(x)
     outputs.append(x) # C3
 
-    x = keras.layers.Conv2D(
-                        filters=256,
-                        kernel_size=3,
-                        padding='same',
-                        activation='relu'
-                        )(x)
-    x = keras.layers.BatchNormalization()(x)
-    x = keras.layers.MaxPool2D(
-                        pool_size=(2, 2),
+    x = ConvP3D(256)(x)
+    x = keras.layers.MaxPool3D(
+                        pool_size=(2, 2, 2),
                         padding='same'
-                        )(x) # (32, 32, 256)
+                        )(x) # (32, 32, 1, 256)
 
     outputs.append(x) # C4
     return outputs

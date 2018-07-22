@@ -116,6 +116,51 @@ def default_regression_model(num_anchors, pyramid_feature_size=64, regression_fe
     return keras.models.Model(inputs=inputs, outputs=outputs, name=name)
 
 
+def __create_pyramid_features3D(C2, C3, C4, feature_size=64):
+    """ Creates the FPN layers on top of the backbone features.
+
+    Args
+        C2           : Feature stage C2 from the backbone. (128, 128, 4, ?)
+        C3           : Feature stage C3 from the backbone. (64, 64, 2, ?)
+        C4           : Feature stage C4 from the backbone. (32, 32, 1, ?)
+        feature_size : The feature size to use for the resulting feature levels.
+
+    Returns
+        A list of feature levels [P2, P3, P4, P5, P6].
+    """
+    # upsample C4 to get P4 from the FPN paper
+    P4           = keras.layers.Conv3D(feature_size, kernel_size=1, strides=1, padding='same', name='C4_reduced')(C4)
+    P4_upsampled = keras.layers.UpSampling3D(name='P4_upsampled')(P4)
+    P4           = keras.layers.Conv3D(feature_size, kernel_size=3, strides=1, padding='same', name='P4_tmp')(P4) # (32, 32, 1, ?)
+
+    # add P4 elementwise to C3
+    P3           = keras.layers.Conv3D(feature_size, kernel_size=1, strides=1, padding='same', name='C3_reduced')(C3)
+    P3           = keras.layers.Add(name='P3_merged')([P4_upsampled, P3])
+    P3_upsampled = keras.layers.UpSampling3D(name='P3_upsampled')(P3)
+    P3           = keras.layers.Conv3D(feature_size, kernel_size=3, strides=1, padding='same', name='P3_tmp')(P3) # (64, 64, 2, ?)
+
+    # add P3 elementwise to C2
+    P2 = keras.layers.Conv3D(feature_size, kernel_size=1, strides=1, padding='same', name='C2_reduced')(C2)
+    P2 = keras.layers.Add(name='P2_merged')([P3_upsampled, P2])
+    P2 = keras.layers.Conv3D(feature_size, kernel_size=3, strides=1, padding='same', name='P2_tmp')(P2) # (128, 128, 4, ?)
+
+    # "P5 is obtained via a 3x3 stride-2 conv on C4"
+    C4_reshaped = keras.layers.Reshape((32, 32, -1), name='C4_reshaped')(C4)
+    P5 = keras.layers.Conv2D(feature_size, kernel_size=3, strides=2, padding='same', name='P5')(C4_reshaped) # (16, 16, ?)
+
+    # "P6 is computed by applying ReLU followed by a 3x3 stride-2 conv on P5"
+    # P6 = keras.layers.Activation('relu', name='C6_relu')(P5)
+    # P6 = keras.layers.Conv2D(feature_size, kernel_size=3, strides=2, padding='same', name='P6')(P6)
+
+    P2 = keras.layers.MaxPool3D(pool_size=(1, 1, 4), padding='same', name='P2_avgpooled')(P2)
+    P3 = keras.layers.MaxPool3D(pool_size=(1, 1, 2), padding='same', name='P3_avgpooled')(P3)
+
+    P2 = keras.layers.Reshape((128, 128, -1), name='P2')(P2)
+    P3 = keras.layers.Reshape((64, 64, -1), name='P3')(P3)
+    P4 = keras.layers.Reshape((32, 32, -1), name='P4')(P4)
+
+    return [P2, P3, P4, P5]# , P6]
+
 def __create_pyramid_features(C2, C3, C4, feature_size=64):
     """ Creates the FPN layers on top of the backbone features.
 
@@ -183,7 +228,7 @@ AnchorParameters.default = AnchorParameters(
     # strides = [8, 16, 32, 64, 128],
     strides = [4, 8, 16, 32],
     ratios  = np.array([0.5, 1, 2], keras.backend.floatx()),
-    scales  = np.array([2 ** (-2.0 / 3.0), 2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)], keras.backend.floatx()),
+    scales  = np.array([2 ** (-2.0 / 3.0), 2 ** 0, 2 ** (1.0 / 3.0)], keras.backend.floatx()),
 )
 
 
@@ -264,8 +309,8 @@ def retinanet(
     inputs,
     backbone_layers,
     num_classes,
-    num_anchors             = 12,
-    create_pyramid_features = __create_pyramid_features,
+    num_anchors             = 9,
+    create_pyramid_features = __create_pyramid_features3D,
     submodels               = None,
     name                    = 'retinanet'
 ):
@@ -296,20 +341,6 @@ def retinanet(
 
     # C3, C4, C5 = backbone_layers
     C2, C3, C4 = backbone_layers
-
-    # C3.shape = (128, 128, 2, 64)
-    C2 = keras.layers.Conv3D(
-                        filters=64,
-                        kernel_size=3,
-                        padding='same',
-                        activation='relu'
-                        )(C2)
-    C2 = keras.layers.BatchNormalization()(C2)
-    C2 = keras.layers.MaxPool3D(
-                        pool_size=(1, 1, 2),
-                        padding='same'
-                        )(C2)
-    C2 = keras.layers.Reshape((128, 128, -1))(C2)
 
     # compute pyramid features as per https://arxiv.org/abs/1708.02002
     features = create_pyramid_features(C2, C3, C4)
