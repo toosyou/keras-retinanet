@@ -22,8 +22,8 @@ def focal(alpha=0.25, gamma=2.0):
     """ Create a functor for computing the focal loss.
 
     Args
-        alpha: Scale the focal weight with alpha.
-        gamma: Take the power of the focal weight with gamma.
+        alpha: Scale the focal weight with alpha. 0.25
+        gamma: Take the power of the focal weight with gamma. 2.0
 
     Returns
         A functor that computes the focal loss using the alpha and gamma.

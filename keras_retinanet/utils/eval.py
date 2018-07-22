@@ -98,6 +98,10 @@ def _get_detections(generator, model, score_threshold=0.05, max_detections=100, 
         image_detections = np.concatenate([image_boxes, np.expand_dims(image_scores, axis=1), np.expand_dims(image_labels, axis=1)], axis=1)
 
         if save_path is not None:
+            raw_image = raw_image[...,raw_image.shape[-2]//2, 0]
+            raw_image = (raw_image - raw_image.min()) / raw_image.max() * 255.0
+            raw_image = np.repeat(raw_image.reshape((512, 512, 1)), 3, axis=2) # to rgb
+            raw_image = raw_image.astype(np.uint8).copy()
             draw_annotations(raw_image, generator.load_annotations(i), label_to_name=generator.label_to_name)
             draw_detections(raw_image, image_boxes, image_scores, image_labels, label_to_name=generator.label_to_name)
 
@@ -189,7 +193,7 @@ def evaluate(
                     true_positives  = np.append(true_positives, 0)
                     continue
 
-                overlaps            = compute_overlap(np.expand_dims(d, axis=0), annotations)
+                overlaps            = compute_overlap(np.expand_dims(d, axis=0).astype(np.float64), annotations.astype(np.float64))
                 assigned_annotation = np.argmax(overlaps, axis=1)
                 max_overlap         = overlaps[0, assigned_annotation]
 

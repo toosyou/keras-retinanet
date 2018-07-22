@@ -49,7 +49,6 @@ from keras_retinanet.utils.anchors import make_shapes_callback
 from keras_retinanet.utils.keras_version import check_keras_version
 from keras_retinanet.utils.model import freeze as freeze_model
 from keras_retinanet.utils.transform import random_transform_generator
-import lung_generator
 from lung_generator import LungGenerator
 
 
@@ -80,8 +79,8 @@ def model_with_weights(model, weights, skip_mismatch):
         weights       : The weights to load.
         skip_mismatch : If True, skips layers whose shape of weights doesn't match with the model.
     """
-    if weights is not None:
-        model.load_weights(weights, by_name=True, skip_mismatch=skip_mismatch)
+    # if weights is not None:
+    #     model.load_weights(weights, by_name=True, skip_mismatch=skip_mismatch)
     return model
 
 
@@ -110,7 +109,7 @@ def create_models(backbone_retinanet, num_classes, weights, multi_gpu=0, freeze_
             model = model_with_weights(backbone_retinanet(num_classes, modifier=modifier), weights=weights, skip_mismatch=True)
         training_model = multi_gpu_model(model, gpus=multi_gpu)
     else:
-        model          = model_with_weights(backbone_retinanet(num_classes, modifier=modifier), weights=weights, skip_mismatch=True)
+        model          = model_with_weights(backbone_retinanet(num_classes, modifier=modifier, weights=weights), weights=weights, skip_mismatch=True)
         training_model = model
 
     # make prediction model
@@ -166,7 +165,7 @@ def create_callbacks(model, training_model, prediction_model, validation_generat
             # use prediction model for evaluation
             evaluation = CocoEval(validation_generator, tensorboard=tensorboard_callback)
         else:
-            evaluation = Evaluate(validation_generator, tensorboard=tensorboard_callback)
+            evaluation = Evaluate(validation_generator, tensorboard=tensorboard_callback, save_path='./valid_vis')
         evaluation = RedirectModel(evaluation, prediction_model)
         callbacks.append(evaluation)
 
@@ -313,6 +312,7 @@ def create_generators(args, preprocess_image):
         )
     elif args.dataset_type == 'lung':
         train_generator = LungGenerator(
+            set_name='train',
             **{
                 'batch_size'       : args.batch_size,
                 'image_min_side'   : args.image_min_side,
@@ -322,6 +322,7 @@ def create_generators(args, preprocess_image):
         )
 
         validation_generator = LungGenerator(
+            set_name='valid',
             **{
                 'batch_size'       : args.batch_size,
                 'image_min_side'   : args.image_min_side,
@@ -456,6 +457,8 @@ def main(args=None):
         # default to imagenet if nothing else is specified
         if weights is None and args.imagenet_weights:
             weights = backbone.download_imagenet()
+        else:
+            print("Don't load weight!")
 
         print('Creating model, this may take a second...')
         model, training_model, prediction_model = create_models(

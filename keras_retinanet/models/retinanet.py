@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import tensorflow as tf
 import keras
 from keras.layers import TimeDistributed, Reshape, Permute
 
@@ -27,7 +28,7 @@ def default_classification_model(
     num_classes,
     num_anchors,
     pyramid_feature_size=64,
-    prior_probability=0.01,
+    prior_probability=0.002,
     classification_feature_size=64,
     name='classification_submodel'
 ):
@@ -115,42 +116,42 @@ def default_regression_model(num_anchors, pyramid_feature_size=64, regression_fe
     return keras.models.Model(inputs=inputs, outputs=outputs, name=name)
 
 
-def __create_pyramid_features(C3, C4, C5, feature_size=64):
+def __create_pyramid_features(C2, C3, C4, feature_size=64):
     """ Creates the FPN layers on top of the backbone features.
 
     Args
+        C2           : Feature stage C2 from the backbone.
         C3           : Feature stage C3 from the backbone.
         C4           : Feature stage C4 from the backbone.
-        C5           : Feature stage C5 from the backbone.
         feature_size : The feature size to use for the resulting feature levels.
 
     Returns
-        A list of feature levels [P3, P4, P5, P6, P7].
+        A list of feature levels [P2, P3, P4, P5, P6].
     """
-    # upsample C5 to get P5 from the FPN paper
-    P5           = keras.layers.Conv2D(feature_size, kernel_size=1, strides=1, padding='same', name='C5_reduced')(C5)
-    P5_upsampled = layers.UpsampleLike(name='P5_upsampled')([P5, C4])
-    P5           = keras.layers.Conv2D(feature_size, kernel_size=3, strides=1, padding='same', name='P5')(P5)
-
-    # add P5 elementwise to C4
+    # upsample C4 to get P4 from the FPN paper
     P4           = keras.layers.Conv2D(feature_size, kernel_size=1, strides=1, padding='same', name='C4_reduced')(C4)
-    P4           = keras.layers.Add(name='P4_merged')([P5_upsampled, P4])
     P4_upsampled = layers.UpsampleLike(name='P4_upsampled')([P4, C3])
     P4           = keras.layers.Conv2D(feature_size, kernel_size=3, strides=1, padding='same', name='P4')(P4)
 
     # add P4 elementwise to C3
-    P3 = keras.layers.Conv2D(feature_size, kernel_size=1, strides=1, padding='same', name='C3_reduced')(C3)
-    P3 = keras.layers.Add(name='P3_merged')([P4_upsampled, P3])
-    P3 = keras.layers.Conv2D(feature_size, kernel_size=3, strides=1, padding='same', name='P3')(P3)
+    P3           = keras.layers.Conv2D(feature_size, kernel_size=1, strides=1, padding='same', name='C3_reduced')(C3)
+    P3           = keras.layers.Add(name='P3_merged')([P4_upsampled, P3])
+    P3_upsampled = layers.UpsampleLike(name='P3_upsampled')([P3, C2])
+    P3           = keras.layers.Conv2D(feature_size, kernel_size=3, strides=1, padding='same', name='P3')(P3)
 
-    # "P6 is obtained via a 3x3 stride-2 conv on C5"
-    P6 = keras.layers.Conv2D(feature_size, kernel_size=3, strides=2, padding='same', name='P6')(C5)
+    # add P3 elementwise to C2
+    P2 = keras.layers.Conv2D(feature_size, kernel_size=1, strides=1, padding='same', name='C2_reduced')(C2)
+    P2 = keras.layers.Add(name='P2_merged')([P3_upsampled, P2])
+    P2 = keras.layers.Conv2D(feature_size, kernel_size=3, strides=1, padding='same', name='P2')(P2)
 
-    # "P7 is computed by applying ReLU followed by a 3x3 stride-2 conv on P6"
-    P7 = keras.layers.Activation('relu', name='C6_relu')(P6)
-    P7 = keras.layers.Conv2D(feature_size, kernel_size=3, strides=2, padding='same', name='P7')(P7)
+    # "P5 is obtained via a 3x3 stride-2 conv on C4"
+    P5 = keras.layers.Conv2D(feature_size, kernel_size=3, strides=2, padding='same', name='P5')(C4)
 
-    return [P3, P4, P5, P6, P7]
+    # "P6 is computed by applying ReLU followed by a 3x3 stride-2 conv on P5"
+    # P6 = keras.layers.Activation('relu', name='C6_relu')(P5)
+    # P6 = keras.layers.Conv2D(feature_size, kernel_size=3, strides=2, padding='same', name='P6')(P6)
+
+    return [P2, P3, P4, P5]# , P6]
 
 
 class AnchorParameters:
@@ -176,10 +177,13 @@ class AnchorParameters:
 The default anchor parameters.
 """
 AnchorParameters.default = AnchorParameters(
-    sizes   = [32, 64, 128, 256, 512],
-    strides = [8, 16, 32, 64, 128],
+    # sizes   = [32, 64, 128, 256, 512],
+    # sizes   = [16, 32, 64, 128, 256],
+    sizes   = [8, 16, 32, 64],
+    # strides = [8, 16, 32, 64, 128],
+    strides = [4, 8, 16, 32],
     ratios  = np.array([0.5, 1, 2], keras.backend.floatx()),
-    scales  = np.array([2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)], keras.backend.floatx()),
+    scales  = np.array([2 ** (-2.0 / 3.0), 2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)], keras.backend.floatx()),
 )
 
 
@@ -260,7 +264,7 @@ def retinanet(
     inputs,
     backbone_layers,
     num_classes,
-    num_anchors             = 9,
+    num_anchors             = 12,
     create_pyramid_features = __create_pyramid_features,
     submodels               = None,
     name                    = 'retinanet'
@@ -290,10 +294,25 @@ def retinanet(
     if submodels is None:
         submodels = default_submodels(num_classes, num_anchors)
 
-    C3, C4, C5 = backbone_layers
+    # C3, C4, C5 = backbone_layers
+    C2, C3, C4 = backbone_layers
+
+    # C3.shape = (128, 128, 2, 64)
+    C2 = keras.layers.Conv3D(
+                        filters=64,
+                        kernel_size=3,
+                        padding='same',
+                        activation='relu'
+                        )(C2)
+    C2 = keras.layers.BatchNormalization()(C2)
+    C2 = keras.layers.MaxPool3D(
+                        pool_size=(1, 1, 2),
+                        padding='same'
+                        )(C2)
+    C2 = keras.layers.Reshape((128, 128, -1))(C2)
 
     # compute pyramid features as per https://arxiv.org/abs/1708.02002
-    features = create_pyramid_features(C3, C4, C5)
+    features = create_pyramid_features(C2, C3, C4)
 
     # for all pyramid levels, run available submodels
     pyramids = __build_pyramid(submodels, features)
@@ -336,7 +355,8 @@ def retinanet_bbox(
         model = retinanet(num_anchors=anchor_parameters.num_anchors(), **kwargs)
 
     # compute the anchors
-    features = [model.get_layer(p_name).output for p_name in ['P3', 'P4', 'P5', 'P6', 'P7']]
+    # features = [model.get_layer(p_name).output for p_name in ['P3', 'P4', 'P5', 'P6', 'P7']]
+    features = [model.get_layer(p_name).output for p_name in ['P2', 'P3', 'P4', 'P5']]# , 'P6']]
     anchors  = __build_anchors(anchor_parameters, features)
 
     # we expect the anchors, regression and classification values as first output

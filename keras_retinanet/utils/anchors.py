@@ -152,15 +152,15 @@ def anchors_for_shape(
         np.array of shape (N, 4) containing the (x1, y1, x2, y2) coordinates for the anchors.
     """
     if pyramid_levels is None:
-        pyramid_levels = [3, 4, 5, 6, 7]
+        pyramid_levels = [2, 3, 4, 5]# , 6]
     if strides is None:
         strides = [2 ** x for x in pyramid_levels]
     if sizes is None:
-        sizes = [2 ** (x + 2) for x in pyramid_levels]
+        sizes = [2 ** (x + 1) for x in pyramid_levels]
     if ratios is None:
         ratios = np.array([0.5, 1, 2])
     if scales is None:
-        scales = np.array([2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)])
+        scales = np.array([2 ** (-2.0 / 3.0), 2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)])
 
     if shapes_callback is None:
         shapes_callback = guess_shapes
@@ -216,7 +216,7 @@ def generate_anchors(base_size=16, ratios=None, scales=None):
         ratios = np.array([0.5, 1, 2])
 
     if scales is None:
-        scales = np.array([2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)])
+        scales = np.array([2 ** (-2.0 / 3.0), 2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)])
 
     num_anchors = len(ratios) * len(scales)
 

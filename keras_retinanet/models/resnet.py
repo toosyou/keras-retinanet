@@ -65,7 +65,7 @@ class ResNetBackbone(Backbone):
     def validate(self):
         """ Checks whether the backbone string is correct.
         """
-        allowed_backbones = ['resnet50', 'resnet101', 'resnet152']
+        allowed_backbones = ['resnet50', 'resnet101', 'resnet152', 'resnet18']
         backbone = self.backbone.split('_')[0]
 
         if backbone not in allowed_backbones:
@@ -76,7 +76,76 @@ class ResNetBackbone(Backbone):
         """
         return preprocess_image(inputs, mode='caffe')
 
-def resnet_retinanet(num_classes, backbone='resnet50', inputs=None, modifier=None, **kwargs):
+def custom_model(inputs): # (?, ?, 16, 1)
+    def ConvP3D(filters):
+        def f(x):
+            x = keras.layers.Conv3D(
+                            filters=filters,
+                            kernel_size=(3, 3, 1),
+                            padding='same',
+                            activation='relu'
+                            )(x)
+            x = keras.layers.BatchNormalization()(x)
+            x = keras.layers.Conv3D(
+                            filters=filters,
+                            kernel_size=(1, 1, 3),
+                            padding='same',
+                            activation='relu'
+                            )(x)
+            x = keras.layers.BatchNormalization()(x)
+            return x
+        return f
+
+    # pool 3 times
+    outputs = list()
+
+    x = inputs # (512, 512, 16, 1)
+    x = keras.layers.BatchNormalization()(x)
+    x = ConvP3D(16)(x)
+    x = keras.layers.MaxPool3D(
+                        pool_size=(2, 2, 2),
+                        padding='same'
+                        )(x) # (256, 256, 8, 256)
+
+    x = ConvP3D(32)(x)
+    x = keras.layers.MaxPool3D(
+                        pool_size=(2, 2, 2),
+                        padding='same'
+                        )(x) # (128, 128, 4, 256)
+
+    x = ConvP3D(64)(x)
+    x = keras.layers.MaxPool3D(
+                        pool_size=(1, 1, 2),
+                        padding='same'
+                        )(x) # (128, 128, 2, 256)
+
+    outputs.append(x) # C2
+
+    x = ConvP3D(128)(x)
+    x = keras.layers.MaxPool3D(
+                        pool_size=(2, 2, 2),
+                        padding='same'
+                        )(x) # (64, 64, 1, 256)
+
+    x = keras.layers.Reshape((64, 64, -1))(x)
+    outputs.append(x) # C3
+
+    x = keras.layers.Conv2D(
+                        filters=256,
+                        kernel_size=3,
+                        padding='same',
+                        activation='relu'
+                        )(x)
+    x = keras.layers.BatchNormalization()(x)
+    x = keras.layers.MaxPool2D(
+                        pool_size=(2, 2),
+                        padding='same'
+                        )(x) # (32, 32, 256)
+
+    outputs.append(x) # C4
+    return outputs
+
+def resnet_retinanet(num_classes, backbone='resnet50', inputs=None, modifier=None, weights=None, **kwargs):
     """ Constructs a retinanet model using a resnet backbone.
 
     Args
@@ -94,11 +163,14 @@ def resnet_retinanet(num_classes, backbone='resnet50', inputs=None, modifier=Non
 
     # create the resnet backbone
     if backbone == 'resnet50':
-        resnet = keras_resnet.models.ResNet50(inputs, include_top=False, freeze_bn=True)
+        resnet = keras_resnet.models.ResNet50(inputs, include_top=False, freeze_bn=False)
     elif backbone == 'resnet101':
         resnet = keras_resnet.models.ResNet101(inputs, include_top=False, freeze_bn=True)
     elif backbone == 'resnet152':
         resnet = keras_resnet.models.ResNet152(inputs, include_top=False, freeze_bn=True)
+    elif backbone == 'resnet18':
+        inputs = keras.layers.Input(shape=(512, 512, 16, 1))
+        outputs = custom_model(inputs)
     else:
         raise ValueError('Backbone (\'{}\') is invalid.'.format(backbone))
 
@@ -106,31 +178,11 @@ def resnet_retinanet(num_classes, backbone='resnet50', inputs=None, modifier=Non
     if modifier:
         resnet = modifier(resnet)
 
-    new_inputs = keras.layers.Input(shape=(None, None, 3, 16))
-    permuted = Permute((4, 1, 2, 3))(new_inputs)
-    outputs = list()
-    print(resnet.output[1:])
-    for out in resnet.output[1:]:
-        tmp = TimeDistributed(keras.Model(resnet.input, out))(permuted) # (16, ?, ?, feature_size)
-        feature_size = int(tmp.get_shape()[4])
-
-        def reshape(x): # (?, 16, ?, ?, feature_size)
-            x = Permute((2, 3, 4, 1))(x)
-            # feature_size = int(x.get_shape()[3])
-            shape = tf.shape(x)
-            x = tf.reshape(x, [shape[0], shape[1], shape[2], feature_size*16]) # (?, ?, ?, feature_size * 16)
-            return x
-
-        def cal_shape(x_shape): # (?, 16, ?, ?, feature_size)
-            return [x_shape[0], x_shape[2], x_shape[3], feature_size*16]
-
-        tmp = keras.layers.Lambda(reshape, output_shape=cal_shape)(tmp) # (?, ?, ?, feature_size * 16)
-        tmp = Conv2D(feature_size//4, 1, padding='same')(tmp)
-        outputs.append(tmp)
-    print(outputs)
+    if weights:
+        resnet.load_weights(weights, by_name=True, skip_mismatch=True)
 
     # create the full model
-    return retinanet.retinanet(inputs=new_inputs, num_classes=num_classes, backbone_layers=outputs, **kwargs)
+    return retinanet.retinanet(inputs=inputs, num_classes=num_classes, backbone_layers=outputs, **kwargs)
 
 
 def resnet50_retinanet(num_classes, inputs=None, **kwargs):
