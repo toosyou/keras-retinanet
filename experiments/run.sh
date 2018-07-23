@@ -1,10 +1,11 @@
 #!/bin/bash
 python3 train.py\
-        --gpu $1\
-        --multi-gpu 0\
+        --multi-gpu 2\
         --multi-gpu-force\
-        --batch-size 1\
-        --steps 200\
+        --batch-size 6\
+        --steps 100\
+        --epochs 200\
+        --backbone p3d\
+        --no-evaluation\
         --no-weights\
-        --backbone resnet18\
-        lung ./
+        lung

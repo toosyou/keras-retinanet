@@ -85,14 +85,14 @@ def custom_model(inputs): # (?, ?, 16, 1)
                             padding='same',
                             activation='relu'
                             )(x)
-            x = keras.layers.BatchNormalization()(x)
+            # x = keras.layers.BatchNormalization()(x)
             x = keras.layers.Conv3D(
                             filters=filters,
                             kernel_size=(1, 1, 3),
                             padding='same',
                             activation='relu'
                             )(x)
-            x = keras.layers.BatchNormalization()(x)
+            # x = keras.layers.BatchNormalization()(x)
             return x
         return f
 
@@ -100,13 +100,14 @@ def custom_model(inputs): # (?, ?, 16, 1)
     outputs = list()
 
     x = inputs # (512, 512, 16, 1)
-    x = ConvP3D(32)(x)
+    x = ConvP3D(8)(x)
+    x = ConvP3D(8)(x)
     x = keras.layers.MaxPool3D(
                         pool_size=(2, 2, 2),
                         padding='same'
                         )(x) # (256, 256, 8, 256)
 
-    x = ConvP3D(64)(x)
+    x = ConvP3D(16)(x)
     x = keras.layers.MaxPool3D(
                         pool_size=(2, 2, 2),
                         padding='same'
@@ -114,7 +115,7 @@ def custom_model(inputs): # (?, ?, 16, 1)
 
     outputs.append(x) # C2
 
-    x = ConvP3D(128)(x)
+    x = ConvP3D(32)(x)
     x = keras.layers.MaxPool3D(
                         pool_size=(2, 2, 2),
                         padding='same'
@@ -122,7 +123,7 @@ def custom_model(inputs): # (?, ?, 16, 1)
 
     outputs.append(x) # C3
 
-    x = ConvP3D(256)(x)
+    x = ConvP3D(64)(x)
     x = keras.layers.MaxPool3D(
                         pool_size=(2, 2, 2),
                         padding='same'
@@ -145,7 +146,8 @@ def resnet_retinanet(num_classes, backbone='resnet50', inputs=None, modifier=Non
     """
     # choose default input
     if inputs is None:
-        inputs = keras.layers.Input(shape=(None, None, 3))
+        # inputs = keras.layers.Input(shape=(None, None, 3))
+        inputs = keras.layers.Input(shape=(512, 512, 16, 1))
 
     # create the resnet backbone
     if backbone == 'resnet50':
@@ -155,7 +157,6 @@ def resnet_retinanet(num_classes, backbone='resnet50', inputs=None, modifier=Non
     elif backbone == 'resnet152':
         resnet = keras_resnet.models.ResNet152(inputs, include_top=False, freeze_bn=True)
     elif backbone == 'resnet18':
-        inputs = keras.layers.Input(shape=(512, 512, 16, 1))
         outputs = custom_model(inputs)
     else:
         raise ValueError('Backbone (\'{}\') is invalid.'.format(backbone))

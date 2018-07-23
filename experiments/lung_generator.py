@@ -22,6 +22,14 @@ import pickle
 
 class LungGenerator(Generator):
     def __init__(self, set_name, **kwargs):
+        def preprocess_image(image):
+            """ Preprocess image and its annotations.
+            """
+            MEAN, STD = 174., 825.
+            # image = (image - image.mean()) / image.std()
+            image = (image - MEAN) / STD
+            return image
+
         self.set_name = set_name
         self.config = configparser.ConfigParser()
         self.config.read('./configs.ini')
@@ -31,7 +39,7 @@ class LungGenerator(Generator):
             self.valid_size = min(200, infos['valid_size'])
             self.random_index = np.random.choice(int(infos['valid_size']), size=self.valid_size, replace=False)
 
-        super(LungGenerator, self).__init__(**dict(kwargs, group_method='random'))
+        super(LungGenerator, self).__init__(**dict(kwargs, group_method='random', preprocess_image=preprocess_image))
 
     def size(self):
         if self.set_name == 'valid':
@@ -93,9 +101,7 @@ class LungGenerator(Generator):
     def preprocess_group_entry(self, image, annotations):
         """ Preprocess image and its annotations.
         """
-        MEAN, STD = 175., 825.
-        # image = (image - image.mean()) / image.std()
-        image = (image - MEAN) / STD
+        image = self.preprocess_image(image)
         return image, annotations
 
     def compute_inputs(self, image_group):
@@ -112,17 +118,10 @@ if __name__ == '__main__':
     gen = LungGenerator(
         'train',
         **{
-            'batch_size'       : 32,
+            'batch_size'       : 1,
             'image_min_side'   : 800,
             'image_max_side'   : 1333,
             'preprocess_image' : lambda x: x,
         }
     )
-    mean = 0.
-    std = 0.
-    for i in np.random.choice(gen.size(), 100):
-        img = gen.load_image(i)
-        mean += img.mean()
-        std += img.std()
-
-    print(mean/100., std/100.)
+    next(gen)

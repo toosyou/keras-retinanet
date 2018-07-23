@@ -23,13 +23,16 @@ from .. import layers
 
 import numpy as np
 
+PYRAMID_FEATURE_SIZE = 32
+CLASSIFICATION_FEATURE_SIZE = 32
+REGRESSION_FEATURE_SIZE = 32
 
 def default_classification_model(
     num_classes,
     num_anchors,
-    pyramid_feature_size=64,
+    pyramid_feature_size=PYRAMID_FEATURE_SIZE,
     prior_probability=0.002,
-    classification_feature_size=64,
+    classification_feature_size=CLASSIFICATION_FEATURE_SIZE,
     name='classification_submodel'
 ):
     """ Creates the default regression submodel.
@@ -77,7 +80,7 @@ def default_classification_model(
     return keras.models.Model(inputs=inputs, outputs=outputs, name=name)
 
 
-def default_regression_model(num_anchors, pyramid_feature_size=64, regression_feature_size=64, name='regression_submodel'):
+def default_regression_model(num_anchors, pyramid_feature_size=PYRAMID_FEATURE_SIZE, regression_feature_size=REGRESSION_FEATURE_SIZE, name='regression_submodel'):
     """ Creates the default regression submodel.
 
     Args
@@ -116,7 +119,7 @@ def default_regression_model(num_anchors, pyramid_feature_size=64, regression_fe
     return keras.models.Model(inputs=inputs, outputs=outputs, name=name)
 
 
-def __create_pyramid_features3D(C2, C3, C4, feature_size=64):
+def __create_pyramid_features3D(C2, C3, C4, feature_size=PYRAMID_FEATURE_SIZE):
     """ Creates the FPN layers on top of the backbone features.
 
     Args
@@ -128,21 +131,43 @@ def __create_pyramid_features3D(C2, C3, C4, feature_size=64):
     Returns
         A list of feature levels [P2, P3, P4, P5, P6].
     """
+    def ConvP3D(filters):
+        def f(x):
+            x = keras.layers.Conv3D(
+                            filters=filters,
+                            kernel_size=(3, 3, 1),
+                            padding='same',
+                            activation='relu'
+                            )(x)
+            # x = keras.layers.BatchNormalization()(x)
+            x = keras.layers.Conv3D(
+                            filters=filters,
+                            kernel_size=(1, 1, 3),
+                            padding='same',
+                            activation='relu'
+                            )(x)
+            # x = keras.layers.BatchNormalization()(x)
+            return x
+        return f
+
     # upsample C4 to get P4 from the FPN paper
     P4           = keras.layers.Conv3D(feature_size, kernel_size=1, strides=1, padding='same', name='C4_reduced')(C4)
     P4_upsampled = keras.layers.UpSampling3D(name='P4_upsampled')(P4)
-    P4           = keras.layers.Conv3D(feature_size, kernel_size=3, strides=1, padding='same', name='P4_tmp')(P4) # (32, 32, 1, ?)
+    P4           = ConvP3D(feature_size)(P4)
+    # P4           = keras.layers.Conv3D(feature_size, kernel_size=3, strides=1, padding='same', name='P4_tmp')(P4) # (32, 32, 1, ?)
 
     # add P4 elementwise to C3
     P3           = keras.layers.Conv3D(feature_size, kernel_size=1, strides=1, padding='same', name='C3_reduced')(C3)
     P3           = keras.layers.Add(name='P3_merged')([P4_upsampled, P3])
     P3_upsampled = keras.layers.UpSampling3D(name='P3_upsampled')(P3)
-    P3           = keras.layers.Conv3D(feature_size, kernel_size=3, strides=1, padding='same', name='P3_tmp')(P3) # (64, 64, 2, ?)
+    P3           = ConvP3D(feature_size)(P3)
+    # P3           = keras.layers.Conv3D(feature_size, kernel_size=3, strides=1, padding='same', name='P3_tmp')(P3) # (64, 64, 2, ?)
 
     # add P3 elementwise to C2
     P2 = keras.layers.Conv3D(feature_size, kernel_size=1, strides=1, padding='same', name='C2_reduced')(C2)
     P2 = keras.layers.Add(name='P2_merged')([P3_upsampled, P2])
-    P2 = keras.layers.Conv3D(feature_size, kernel_size=3, strides=1, padding='same', name='P2_tmp')(P2) # (128, 128, 4, ?)
+    P2           = ConvP3D(feature_size)(P2)
+    # P2 = keras.layers.Conv3D(feature_size, kernel_size=3, strides=1, padding='same', name='P2_tmp')(P2) # (128, 128, 4, ?)
 
     # "P5 is obtained via a 3x3 stride-2 conv on C4"
     C4_reshaped = keras.layers.Reshape((32, 32, -1), name='C4_reshaped')(C4)
@@ -224,10 +249,10 @@ The default anchor parameters.
 AnchorParameters.default = AnchorParameters(
     # sizes   = [32, 64, 128, 256, 512],
     # sizes   = [16, 32, 64, 128, 256],
-    sizes   = [8, 16, 32, 64],
+    sizes   = [8, 16, 32, 64],# , 64],
     # strides = [8, 16, 32, 64, 128],
-    strides = [4, 8, 16, 32],
-    ratios  = np.array([0.5, 1, 2], keras.backend.floatx()),
+    strides = [4, 8, 16, 32],# , 32],
+    ratios  = np.array([1], keras.backend.floatx()),
     scales  = np.array([2 ** (-2.0 / 3.0), 2 ** 0, 2 ** (1.0 / 3.0)], keras.backend.floatx()),
 )
 
@@ -309,7 +334,7 @@ def retinanet(
     inputs,
     backbone_layers,
     num_classes,
-    num_anchors             = 9,
+    num_anchors             = 3,
     create_pyramid_features = __create_pyramid_features3D,
     submodels               = None,
     name                    = 'retinanet'

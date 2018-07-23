@@ -79,8 +79,8 @@ def model_with_weights(model, weights, skip_mismatch):
         weights       : The weights to load.
         skip_mismatch : If True, skips layers whose shape of weights doesn't match with the model.
     """
-    # if weights is not None:
-    #     model.load_weights(weights, by_name=True, skip_mismatch=skip_mismatch)
+    if weights is not None:
+        model.load_weights(weights, by_name=True, skip_mismatch=skip_mismatch)
     return model
 
 
@@ -121,7 +121,7 @@ def create_models(backbone_retinanet, num_classes, weights, multi_gpu=0, freeze_
             'regression'    : losses.smooth_l1(),
             'classification': losses.focal()
         },
-        optimizer=keras.optimizers.adam(lr=1e-5, clipnorm=0.001)
+        optimizer=keras.optimizers.adam()# lr=1e-5, clipnorm=0.001)
     )
 
     return model, training_model, prediction_model
@@ -165,7 +165,7 @@ def create_callbacks(model, training_model, prediction_model, validation_generat
             # use prediction model for evaluation
             evaluation = CocoEval(validation_generator, tensorboard=tensorboard_callback)
         else:
-            evaluation = Evaluate(validation_generator, tensorboard=tensorboard_callback, save_path='./valid_vis')
+            evaluation = Evaluate(validation_generator, tensorboard=tensorboard_callback, save_path='./valid_vis', max_detections=20)
         evaluation = RedirectModel(evaluation, prediction_model)
         callbacks.append(evaluation)
 
@@ -311,13 +311,21 @@ def create_generators(args, preprocess_image):
             **common_args
         )
     elif args.dataset_type == 'lung':
+        def preprocess_image(image):
+            """ Preprocess image and its annotations.
+            """
+            MEAN, STD = 174., 825.
+            # image = (image - image.mean()) / image.std()
+            image = (image - MEAN) / STD
+            return image
+
         train_generator = LungGenerator(
             set_name='train',
             **{
                 'batch_size'       : args.batch_size,
                 'image_min_side'   : args.image_min_side,
                 'image_max_side'   : args.image_max_side,
-                'preprocess_image' : lambda x: x,
+                'preprocess_image' : preprocess_image,
             }
         )
 
@@ -327,7 +335,7 @@ def create_generators(args, preprocess_image):
                 'batch_size'       : args.batch_size,
                 'image_min_side'   : args.image_min_side,
                 'image_max_side'   : args.image_max_side,
-                'preprocess_image' : lambda x: x,
+                'preprocess_image' : preprocess_image,
             }
         )
     else:
@@ -353,10 +361,12 @@ def check_args(parsed_args):
             "Batch size ({}) must be equal to or higher than the number of GPUs ({})".format(parsed_args.batch_size,
                                                                                              parsed_args.multi_gpu))
 
+    '''
     if parsed_args.multi_gpu > 1 and parsed_args.snapshot:
         raise ValueError(
             "Multi GPU training ({}) and resuming from snapshots ({}) is not supported.".format(parsed_args.multi_gpu,
                                                                                                 parsed_args.snapshot))
+    '''
 
     if parsed_args.multi_gpu > 1 and not parsed_args.multi_gpu_force:
         raise ValueError("Multi-GPU support is experimental, use at own risk! Run with --multi-gpu-force if you wish to continue.")
@@ -384,7 +394,7 @@ def parse_args(args):
     kitti_parser.add_argument('kitti_path', help='Path to dataset directory (ie. /tmp/kitti).')
 
     lung_parser = subparsers.add_parser('lung')
-    lung_parser.add_argument('lung_path', help='Path to dataset directory (ie. /tmp/IDRI_LIDC).')
+    # lung_parser.add_argument('lung_path', help='Path to dataset directory (ie. /tmp/IDRI_LIDC).')
 
     def csv_list(string):
         return string.split(',')
@@ -494,6 +504,8 @@ def main(args=None):
         epochs=args.epochs,
         verbose=1,
         callbacks=callbacks,
+        validation_data=validation_generator,
+        validation_steps=20
     )
 
 
