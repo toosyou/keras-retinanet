@@ -94,7 +94,7 @@ def draw_annotations(image, annotations, color=(0, 255, 0), label_to_name=None):
     for a in annotations:
         label   = a[4]
         c       = color if color is not None else label_color(label)
-        # caption = '{}'.format(label_to_name(label) if label_to_name else label)
-        # draw_caption(image, a, caption)
+        caption = '{}'.format(label_to_name(label) if label_to_name else label)
+        draw_caption(image, a, caption)
 
         draw_box(image, a, color=c)

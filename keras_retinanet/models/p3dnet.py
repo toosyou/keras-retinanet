@@ -50,13 +50,15 @@ def custom_model(inputs): # (?, ?, 16, 1)
     x = keras.layers.MaxPool3D(
                         pool_size=(2, 2, 2),
                         padding='same'
-                        )(x) # (256, 256, 8, 256)
+                        )(x) # (256, 256, 8, ?)
+
+    outputs.append(x) # C1
 
     x = ConvP3D(16)(x)
     x = keras.layers.MaxPool3D(
                         pool_size=(2, 2, 2),
                         padding='same'
-                        )(x) # (128, 128, 4, 256)
+                        )(x) # (128, 128, 4, ?)
 
     outputs.append(x) # C2
 
@@ -64,17 +66,19 @@ def custom_model(inputs): # (?, ?, 16, 1)
     x = keras.layers.MaxPool3D(
                         pool_size=(2, 2, 2),
                         padding='same'
-                        )(x) # (64, 64, 2, 256)
+                        )(x) # (64, 64, 2, ?)
 
     outputs.append(x) # C3
+
 
     x = ConvP3D(64)(x)
     x = keras.layers.MaxPool3D(
                         pool_size=(2, 2, 2),
                         padding='same'
-                        )(x) # (32, 32, 1, 256)
+                        )(x) # (32, 32, 1, ?)
 
     outputs.append(x) # C4
+    
     return outputs
 
 def p3dnet_retinanet(num_classes, inputs=None, modifier=None, weights=None, **kwargs):

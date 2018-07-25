@@ -35,7 +35,7 @@ from keras_retinanet import models
 from keras_retinanet.utils.eval import evaluate
 from keras_retinanet.utils.keras_version import check_keras_version
 
-from lung_generator import LungGenerator
+from lung_generator import LungGenerator, LungScanGenerator
 
 
 def get_session():
@@ -62,10 +62,20 @@ def create_generator(args):
         **{
             'batch_size'       : 8,
             'image_min_side'   : args.image_min_side,
-            'image_max_side'   : args.image_max_side,
-            'preprocess_image' : preprocess_image,
+            'image_max_side'   : args.image_max_side
         }
     )
+
+    validation_generator = LungScanGenerator(
+        set_name='valid',
+        index=1,
+        **{
+            'batch_size'       : 8,
+            'image_min_side'   : args.image_min_side,
+            'image_max_side'   : args.image_max_side
+        }
+    )
+
     return validation_generator
 
 
@@ -125,8 +135,7 @@ def main(args=None):
 
     # load the model
     print('Loading model, this may take a second...')
-    with tf.device('/cpu:0'):
-        model = models.load_model(args.model, backbone_name=args.backbone, convert=args.convert_model)
+    model = models.load_model(args.model, backbone_name=args.backbone, convert=args.convert_model)
 
     # print model summary
     # print(model.summary())

@@ -1,9 +1,9 @@
 #!/bin/bash
-mkdir test
+mkdir valid_vis
 python3 evaluate.py\
-            --max-detections 10\
-            --score-threshold 0.03\
-            --save-path test\
+            --max-detections 3\
+            --score-threshold 0.5\
+            --save-path valid_vis\
             --backbone p3d\
             --convert-model $1
 

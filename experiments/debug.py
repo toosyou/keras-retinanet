@@ -168,7 +168,8 @@ def run(generator, args):
         args: parseargs args object.
     """
     # display images, one at a time
-    for i in np.random.choice(generator.size(), 500):
+    # for i in np.random.choice(generator.size(), 200):
+    for i in range(generator.size()):
         # load the data
         image       = generator.load_image(i)
         annotations = generator.load_annotations(i)
@@ -206,8 +207,7 @@ def run(generator, args):
             draw_boxes(image, boxes_batch[0, anchor_states == 1, :], (0, 255, 0))
 
         # cv2.imshow('Image', image)
-        cv2.imwrite(os.path.join('test', '{}.png'.format(i)), image)
-        break
+        cv2.imwrite(os.path.join('debug', '{}.png'.format(i)), image)
         # if cv2.waitKey() == ord('q'):
             # return False
     return True
@@ -221,7 +221,7 @@ def main(args=None):
 
     # create the generator
     generator = LungGenerator(
-        'train',
+        'valid',
         **{
             'batch_size'       : 1,
             'image_min_side'   : 800,

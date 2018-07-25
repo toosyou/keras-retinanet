@@ -69,6 +69,14 @@ def _get_detections(generator, model, score_threshold=0.05, max_detections=100, 
     # Returns
         A list of lists containing the detections for each image in the generator.
     """
+    def normalized_image(raw_image):
+        raw_image = raw_image[...,raw_image.shape[-2]//2, 0]
+        raw_image = (raw_image - raw_image.min())
+        raw_image = raw_image / raw_image.max() * 255.0
+        raw_image = np.repeat(raw_image.reshape((512, 512, 1)), 3, axis=2) # to rgb
+        raw_image = raw_image.astype(np.uint8).copy()
+        return raw_image
+
     all_detections = [[None for i in range(generator.num_classes())] for j in range(generator.size())]
 
     for i in range(generator.size()):
@@ -98,10 +106,7 @@ def _get_detections(generator, model, score_threshold=0.05, max_detections=100, 
         image_detections = np.concatenate([image_boxes, np.expand_dims(image_scores, axis=1), np.expand_dims(image_labels, axis=1)], axis=1)
 
         if save_path is not None:
-            raw_image = raw_image[...,raw_image.shape[-2]//2, 0]
-            raw_image = (raw_image - raw_image.min()) / raw_image.max() * 255.0
-            raw_image = np.repeat(raw_image.reshape((512, 512, 1)), 3, axis=2) # to rgb
-            raw_image = raw_image.astype(np.uint8).copy()
+            raw_image = normalized_image(raw_image)
             draw_annotations(raw_image, generator.load_annotations(i), label_to_name=generator.label_to_name)
             draw_detections(raw_image, image_boxes, image_scores, image_labels, label_to_name=generator.label_to_name)
 
@@ -148,7 +153,8 @@ def evaluate(
     iou_threshold=0.5,
     score_threshold=0.05,
     max_detections=5,
-    save_path=None
+    save_path=None,
+    return_infos=False
 ):
     """ Evaluate a given dataset using a given model.
 
@@ -166,6 +172,7 @@ def evaluate(
     all_detections     = _get_detections(generator, model, score_threshold=score_threshold, max_detections=max_detections, save_path=save_path)
     all_annotations    = _get_annotations(generator)
     average_precisions = {}
+    infos = {}
 
     # all_detections = pickle.load(open('all_detections.pkl', 'rb'))
     # all_annotations = pickle.load(open('all_annotations.pkl', 'rb'))
@@ -226,5 +233,8 @@ def evaluate(
         # compute average precision
         average_precision  = _compute_ap(recall, precision)
         average_precisions[label] = average_precision, num_annotations
+        infos[label] = recall, precision, scores[indices]
 
+    if return_infos:
+        return average_precision, infos
     return average_precisions
