@@ -17,6 +17,7 @@ limitations under the License.
 import tensorflow as tf
 import keras
 from keras.layers import TimeDistributed, Reshape, Permute
+from . import coord
 
 from .. import initializers
 from .. import layers
@@ -137,17 +138,13 @@ def __create_pyramid_features3D(C1, C2, C3, C4, feature_size=PYRAMID_FEATURE_SIZ
             x = keras.layers.Conv3D(
                             filters=filters,
                             kernel_size=(3, 3, 1),
-                            padding='same',
-                            activation='relu'
+                            padding='same'
                             )(x)
-            # x = keras.layers.BatchNormalization()(x)
             x = keras.layers.Conv3D(
                             filters=filters,
                             kernel_size=(1, 1, 3),
-                            padding='same',
-                            activation='relu'
+                            padding='same'
                             )(x)
-            # x = keras.layers.BatchNormalization()(x)
             return x
         return f
 
@@ -172,17 +169,6 @@ def __create_pyramid_features3D(C1, C2, C3, C4, feature_size=PYRAMID_FEATURE_SIZ
     P1           = keras.layers.Conv3D(feature_size, kernel_size=1, strides=1, padding='same', name='C1_reduced')(C1)
     P1           = keras.layers.Add(name='P1_merged')([P2_upsampled, P1])
     P1           = ConvP3D(feature_size)(P1) # (256, 256, 8, ?)
-
-    # "P4 is obtained via a 3x3 stride-2 conv on C3"
-    '''
-    C3_pooled    = keras.layers.MaxPool3D(pool_size=(1, 1, 2), padding='same', name='C3_maxpooled')(C3) # (64, 64, 1, ?)
-    C3_pooled    = keras.layers.Reshape((64, 64, -1))(C3_pooled)
-    P4           = keras.layers.Conv2D(feature_size, kernel_size=3, strides=2, padding='same', name='P4')(C3_pooled) # (32, 32, ?)
-    '''
-
-    # "P6 is computed by applying ReLU followed by a 3x3 stride-2 conv on P5"
-    # P6 = keras.layers.Activation('relu', name='C6_relu')(P5)
-    # P6 = keras.layers.Conv2D(feature_size, kernel_size=3, strides=2, padding='same', name='P6')(P6)
 
     P1 = keras.layers.MaxPool3D(pool_size=(1, 1, 8), padding='same', name='P1_maxpooled')(P1)
     P2 = keras.layers.MaxPool3D(pool_size=(1, 1, 4), padding='same', name='P2_maxpooled')(P2)

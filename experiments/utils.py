@@ -60,7 +60,7 @@ def get_dicom_volume(folder_path):
 
     return images2volume(images) # convert images to volume
 
-def get_patches(scan, z_patch=16, only_positive=True, verbose=False):
+def get_patches(scan, z_patch=16, negative_ratio=-1., verbose=False):
     def get_max_bboxes(nods):
         max_bboxes = list()
         for nod in nods:
@@ -87,8 +87,6 @@ def get_patches(scan, z_patch=16, only_positive=True, verbose=False):
             labels.append((bbox[0], bbox[2], bbox[1], bbox[3], 0)) # x1, y1, x2, y2, 1
         return labels
 
-    # X_STD, X_MEAN = 579.5747354211392, -1776.2860315918922
-
     X, y = list(), list()
     volume = scan.to_volume(verbose=False)
     # lung_mask = data_util.lung_mask(volume, times_dilation=20, times_erosion=15, verbose=verbose)
@@ -98,14 +96,11 @@ def get_patches(scan, z_patch=16, only_positive=True, verbose=False):
 
     for z in range(z_patch//2, volume.shape[2]-z_patch//2):
         selected_bboxes = bboxes_contain_z(z, bboxes)
-        if not only_positive or len(selected_bboxes):
-            # X.append(np.repeat(volume[:,:, z-z_patch//2: z+z_patch//2].reshape((512, 512, 1, z_patch)), 3, axis=2)) # to rgb
+        if np.random.random() < negative_ratio or len(selected_bboxes):
             X.append(volume[:,:, z-z_patch//2: z+z_patch//2])
             y.append(generate_labels(selected_bboxes))
 
     X, y = np.array(X), np.array(y)
-    # X, y = shuffle(np.array(X), np.array(y))
-    # X = (X - X_MEAN) / X_STD
     return X, y
 
 def save_patch(image, annotations, index, which_set):

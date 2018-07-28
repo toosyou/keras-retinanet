@@ -1,5 +1,5 @@
 #!/bin/bash
-python3 train.py\
+TF_CPP_MIN_LOG_LEVEL=2 python3 train.py\
         --multi-gpu 2\
         --multi-gpu-force\
         --batch-size 4\

@@ -91,12 +91,13 @@ class LungGenerator(Generator):
         if self.set_name == 'valid':
             image_index = self.random_index[image_index]
         annotations = utils.load_annotations(image_index, self.set_name) # (x1, y1, x2, y2, label)
-        permuted_annotations = np.zeros_like(annotations)
-        permuted_annotations[:, 0] = annotations[:, 1]
-        permuted_annotations[:, 1] = annotations[:, 0]
-        permuted_annotations[:, 2] = annotations[:, 3]
-        permuted_annotations[:, 3] = annotations[:, 2]
-        permuted_annotations[:, 4] = annotations[:, 4]
+        permuted_annotations = np.zeros((annotations.shape[0], 5))
+        if annotations.shape[0] > 0:
+            permuted_annotations[:, 0] = annotations[:, 1]
+            permuted_annotations[:, 1] = annotations[:, 0]
+            permuted_annotations[:, 2] = annotations[:, 3]
+            permuted_annotations[:, 3] = annotations[:, 2]
+            permuted_annotations[:, 4] = annotations[:, 4]
         return permuted_annotations
 
     def preprocess_group_entry(self, image, annotations):
@@ -128,7 +129,7 @@ class LungScanGenerator(Generator):
         self.set_name = set_name
         self.scan_index = scan_index_split(1018)[{'train': 0, 'valid': 1, 'test': 2}[set_name]][index]
         self.scan = pl.query(pl.Scan).filter()[self.scan_index]
-        self.X, self.y = get_patches(self.scan, only_positive=False)
+        self.X, self.y = get_patches(self.scan, negative_ratio=2.)
         super(LungScanGenerator, self).__init__(**dict(kwargs, group_method='none', preprocess_image=preprocess_image))
 
     def size(self):
