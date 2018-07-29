@@ -59,17 +59,16 @@ def create_generator(args):
         }
     )
 
-
-    validation_generator = LungScanGenerator(
-        set_name='valid',
-        index=4,
-        **{
-            'batch_size'       : 8,
-            'image_min_side'   : args.image_min_side,
-            'image_max_side'   : args.image_max_side
-        }
-    )
-
+    if args.index != -1:
+        validation_generator = LungScanGenerator(
+            set_name='valid',
+            index=args.index,
+            **{
+                'batch_size'       : 8,
+                'image_min_side'   : args.image_min_side,
+                'image_max_side'   : args.image_max_side
+            }
+        )
 
     return validation_generator
 
@@ -103,6 +102,7 @@ def parse_args(args):
     parser.add_argument('--save-path',       help='Path for saving images with detections (doesn\'t work for COCO).')
     parser.add_argument('--image-min-side',  help='Rescale the image so the smallest side is min_side.', type=int, default=800)
     parser.add_argument('--image-max-side',  help='Rescale the image if the largest side is larger than max_side.', type=int, default=1333)
+    parser.add_argument('--index',           help='Index of the scan in validation set to be evaluate.', type=int, default=-1)
 
     return parser.parse_args(args)
 

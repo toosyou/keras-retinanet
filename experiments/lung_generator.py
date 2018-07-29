@@ -8,6 +8,7 @@ from sklearn.utils import shuffle
 
 import os
 import sys
+import math
 sys.path.append('../../LungTumor/')
 import data_util
 
@@ -20,6 +21,38 @@ import configparser
 import pickle
 from preprocessing import scan_index_split
 from utils import get_patches
+from scipy.ndimage.interpolation import rotate
+
+def random_transform(
+    image,
+    annotations,
+    flip_x_chance=0.5,
+    flip_y_chance=0.5,
+    flip_z_chance=0.5
+):
+    def fix_annotaions(annotations):
+        fix_annotaions = np.zeros((annotations.shape[0], 5))
+        fix_annotaions[:, 0] = np.minimum(annotations[:, 0], annotations[:, 2])
+        fix_annotaions[:, 1] = np.minimum(annotations[:, 1], annotations[:, 3])
+        fix_annotaions[:, 2] = np.maximum(annotations[:, 0], annotations[:, 2])
+        fix_annotaions[:, 3] = np.maximum(annotations[:, 1], annotations[:, 3])
+        return fix_annotaions
+
+    image, annotations = image.copy(), annotations.copy()
+    for axis, chance in enumerate([flip_x_chance, flip_y_chance, flip_z_chance]):
+        if np.random.random() < chance:
+            image = np.flip(image, axis)
+            if axis < 2:
+                axis = 1 - axis
+                annotations[:, axis] = 512. - annotations[:, axis]
+                annotations[:, axis+2] = 512. - annotations[:, axis+2]
+
+    annotations = fix_annotaions(annotations)
+
+    image = np.array(image)
+    annotations = np.array(annotations)
+    return image, annotations
+
 
 class LungGenerator(Generator):
     def __init__(self, set_name, **kwargs):
@@ -104,6 +137,7 @@ class LungGenerator(Generator):
         """ Preprocess image and its annotations.
         """
         image = self.preprocess_image(image)
+        image, annotations = random_transform(image, annotations)
         return image, annotations
 
     def compute_inputs(self, image_group):

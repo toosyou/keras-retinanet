@@ -6,5 +6,4 @@ python3 evaluate.py\
             --save-path valid_vis\
             --backbone p3d\
             --convert-model $1
-
-#             --gpu 1\
+# CUDA_VISIBLE_DEVICES="" 

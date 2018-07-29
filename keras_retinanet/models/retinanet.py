@@ -24,9 +24,9 @@ from .. import layers
 
 import numpy as np
 
-PYRAMID_FEATURE_SIZE = 32
-CLASSIFICATION_FEATURE_SIZE = 32
-REGRESSION_FEATURE_SIZE = 32
+PYRAMID_FEATURE_SIZE = 64
+CLASSIFICATION_FEATURE_SIZE = 64
+REGRESSION_FEATURE_SIZE = 64
 
 def default_classification_model(
     num_classes,
