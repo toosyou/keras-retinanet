@@ -28,6 +28,7 @@ import cv2
 sys.path.append('../')
 from keras_retinanet import models
 from keras_retinanet.utils.eval import evaluate
+from keras_retinanet.utils.eval import _get_detections as get_detections
 from keras_retinanet.utils.keras_version import check_keras_version
 from keras_retinanet.utils.visualization import draw_detections
 
@@ -105,72 +106,6 @@ class DicomGenerator:
 def create_generator(args):
     return DicomGenerator(args.dicom_dir)
 
-def get_detections(generator, model, score_threshold=0.05, max_detections=100, save_path=None):
-    """ Get the detections from the model using the generator.
-
-    The result is a list of lists such that the size is:
-        all_detections[num_images][num_classes] = detections[num_detections, 4 + num_classes]
-
-    # Arguments
-        generator       : The generator used to run images through the model.
-        model           : The model to run on the images.
-        score_threshold : The score confidence threshold to use.
-        max_detections  : The maximum number of detections to use per image.
-        save_path       : The path to save the images with visualized detections to.
-    # Returns
-        A list of lists containing the detections for each image in the generator.
-    """
-    def normalized_image(raw_image):
-        raw_image = raw_image[...,raw_image.shape[-2]//2, 0]
-        raw_image = (raw_image - raw_image.min())
-        raw_image = raw_image / raw_image.max() * 255.0
-        raw_image = np.repeat(raw_image.reshape((512, 512, 1)), 3, axis=2) # to rgb
-        raw_image = raw_image.astype(np.uint8).copy()
-        return raw_image
-
-    all_detections = [[None for i in range(generator.num_classes())] for j in range(generator.size())]
-
-    for i in range(generator.size()):
-        raw_image    = generator.load_image(i)
-        image        = generator.preprocess_image(raw_image.copy())
-        image, scale = generator.resize_image(image)
-
-        # run network
-        boxes, scores, labels = model.predict_on_batch(np.expand_dims(image, axis=0))[:3]
-
-        # correct boxes for image scale
-        boxes /= scale
-
-        # select indices which have a score above the threshold
-        indices = np.where(scores[0, :] > score_threshold)[0]
-
-        # select those scores
-        scores = scores[0][indices]
-
-        # find the order with which to sort the scores
-        scores_sort = np.argsort(-scores)[:max_detections]
-
-        # select detections
-        image_boxes      = boxes[0, indices[scores_sort], :]
-        image_scores     = scores[scores_sort]
-        image_labels     = labels[0, indices[scores_sort]]
-        image_detections = np.concatenate([image_boxes, np.expand_dims(image_scores, axis=1), np.expand_dims(image_labels, axis=1)], axis=1)
-
-        if save_path is not None:
-            raw_image = normalized_image(raw_image)
-            # draw_annotations(raw_image, generator.load_annotations(i), label_to_name=generator.label_to_name)
-            draw_detections(raw_image, image_boxes, image_scores, image_labels, label_to_name=generator.label_to_name)
-
-            cv2.imwrite(os.path.join(save_path, '{}.png'.format(i)), raw_image)
-
-        # copy detections to all_detections
-        for label in range(generator.num_classes()):
-            all_detections[i][label] = image_detections[image_detections[:, -1] == label, :-1]
-
-        # print('{}/{}'.format(i + 1, generator.size()), end='\r')
-
-    return all_detections
-
 def main(args=None):
     # parse arguments
     if args is None:
@@ -202,7 +137,9 @@ def main(args=None):
         model,
         score_threshold=args.score_threshold,
         max_detections=args.max_detections,
-        save_path=args.save_path
+        save_path=args.save_path,
+        do_draw_annotations=False,
+        window_leveling=True
     )
 
 

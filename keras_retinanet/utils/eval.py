@@ -54,7 +54,7 @@ def _compute_ap(recall, precision):
     return ap
 
 
-def _get_detections(generator, model, score_threshold=0.05, max_detections=100, save_path=None):
+def _get_detections(generator, model, score_threshold=0.05, max_detections=100, save_path=None, do_draw_annotations=True, window_leveling=False):
     """ Get the detections from the model using the generator.
 
     The result is a list of lists such that the size is:
@@ -71,9 +71,18 @@ def _get_detections(generator, model, score_threshold=0.05, max_detections=100, 
     """
     def normalized_image(raw_image):
         raw_image = raw_image[...,raw_image.shape[-2]//2, 0]
-        raw_image = (raw_image - raw_image.min())
-        raw_image = raw_image / raw_image.max() * 255.0
-        raw_image = np.repeat(raw_image.reshape((512, 512, 1)), 3, axis=2) # to rgb
+        if window_leveling:
+            raw_image = np.where(raw_image > -1400., raw_image, -1400.)
+            raw_image = np.where(raw_image < 200., raw_image, 200.)
+            raw_image = (raw_image + 1400.)
+            raw_image = raw_image * 255. / 1600.
+
+        else:
+            raw_image = (raw_image - raw_image.min())
+            raw_image = raw_image / raw_image.max() * 255.0
+
+        raw_image = np.hstack((raw_image, raw_image))
+        raw_image = np.repeat(np.expand_dims(raw_image, 2), 3, axis=2) # to rgb
         raw_image = raw_image.astype(np.uint8).copy()
         return raw_image
 
@@ -107,7 +116,8 @@ def _get_detections(generator, model, score_threshold=0.05, max_detections=100, 
 
         if save_path is not None:
             raw_image = normalized_image(raw_image)
-            draw_annotations(raw_image, generator.load_annotations(i), label_to_name=generator.label_to_name)
+            if do_draw_annotations:
+                draw_annotations(raw_image, generator.load_annotations(i), label_to_name=generator.label_to_name)
             draw_detections(raw_image, image_boxes, image_scores, image_labels, label_to_name=generator.label_to_name)
 
             cv2.imwrite(os.path.join(save_path, '{}.png'.format(i)), raw_image)

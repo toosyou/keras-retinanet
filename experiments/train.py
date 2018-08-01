@@ -25,13 +25,6 @@ import keras
 import keras.preprocessing.image
 import tensorflow as tf
 
-# Allow relative imports when being executed as script.
-'''
-if __name__ == "__main__" and __package__ is None:
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-    import keras_retinanet.bin  # noqa: F401
-    __package__ = "keras_retinanet.bin"
-'''
 sys.path.append('../')
 
 # Change these to absolute imports if you copy this script outside the keras_retinanet package.
@@ -41,14 +34,8 @@ from keras_retinanet import models
 from keras_retinanet.callbacks import RedirectModel
 from keras_retinanet.callbacks.eval import Evaluate
 from keras_retinanet.models.retinanet import retinanet_bbox
-from keras_retinanet.preprocessing.csv_generator import CSVGenerator
-from keras_retinanet.preprocessing.kitti import KittiGenerator
-from keras_retinanet.preprocessing.open_images import OpenImagesGenerator
-from keras_retinanet.preprocessing.pascal_voc import PascalVocGenerator
-from keras_retinanet.utils.anchors import make_shapes_callback
 from keras_retinanet.utils.keras_version import check_keras_version
 from keras_retinanet.utils.model import freeze as freeze_model
-from keras_retinanet.utils.transform import random_transform_generator
 from lung_generator import LungGenerator
 
 
@@ -160,13 +147,7 @@ def create_callbacks(model, training_model, prediction_model, validation_generat
         callbacks.append(tensorboard_callback)
 
     if args.evaluation and validation_generator:
-        if args.dataset_type == 'coco':
-            from keras_retinanet.callbacks.coco import CocoEval
-
-            # use prediction model for evaluation
-            evaluation = CocoEval(validation_generator, tensorboard=tensorboard_callback)
-        else:
-            evaluation = Evaluate(validation_generator, tensorboard=tensorboard_callback, save_path='./valid_vis', max_detections=20)
+        evaluation = Evaluate(validation_generator, tensorboard=tensorboard_callback, save_path='./valid_vis', max_detections=20)
         evaluation = RedirectModel(evaluation, prediction_model)
         callbacks.append(evaluation)
 
@@ -208,137 +189,9 @@ def create_generators(args, preprocess_image):
         args             : parseargs object containing configuration for generators.
         preprocess_image : Function that preprocesses an image for the network.
     """
-    common_args = {
-        'batch_size'       : args.batch_size,
-        'image_min_side'   : args.image_min_side,
-        'image_max_side'   : args.image_max_side,
-        'preprocess_image' : preprocess_image,
-    }
-
-    # create random transform generator for augmenting training data
-    if args.random_transform:
-        transform_generator = random_transform_generator(
-            min_rotation=-0.1,
-            max_rotation=0.1,
-            min_translation=(-0.1, -0.1),
-            max_translation=(0.1, 0.1),
-            min_shear=-0.1,
-            max_shear=0.1,
-            min_scaling=(0.9, 0.9),
-            max_scaling=(1.1, 1.1),
-            flip_x_chance=0.5,
-            flip_y_chance=0.5,
-        )
-    else:
-        transform_generator = random_transform_generator(flip_x_chance=0.5)
-
-    if args.dataset_type == 'coco':
-        # import here to prevent unnecessary dependency on cocoapi
-        from keras_retinanet.preprocessing.coco import CocoGenerator
-
-        train_generator = CocoGenerator(
-            args.coco_path,
-            'train2017',
-            transform_generator=transform_generator,
-            **common_args
-        )
-
-        validation_generator = CocoGenerator(
-            args.coco_path,
-            'val2017',
-            **common_args
-        )
-    elif args.dataset_type == 'pascal':
-        train_generator = PascalVocGenerator(
-            args.pascal_path,
-            'trainval',
-            transform_generator=transform_generator,
-            **common_args
-        )
-
-        validation_generator = PascalVocGenerator(
-            args.pascal_path,
-            'test',
-            **common_args
-        )
-    elif args.dataset_type == 'csv':
-        train_generator = CSVGenerator(
-            args.annotations,
-            args.classes,
-            transform_generator=transform_generator,
-            **common_args
-        )
-
-        if args.val_annotations:
-            validation_generator = CSVGenerator(
-                args.val_annotations,
-                args.classes,
-                **common_args
-            )
-        else:
-            validation_generator = None
-    elif args.dataset_type == 'oid':
-        train_generator = OpenImagesGenerator(
-            args.main_dir,
-            subset='train',
-            version=args.version,
-            labels_filter=args.labels_filter,
-            annotation_cache_dir=args.annotation_cache_dir,
-            fixed_labels=args.fixed_labels,
-            transform_generator=transform_generator,
-            **common_args
-        )
-
-        validation_generator = OpenImagesGenerator(
-            args.main_dir,
-            subset='validation',
-            version=args.version,
-            labels_filter=args.labels_filter,
-            annotation_cache_dir=args.annotation_cache_dir,
-            fixed_labels=args.fixed_labels,
-            **common_args
-        )
-    elif args.dataset_type == 'kitti':
-        train_generator = KittiGenerator(
-            args.kitti_path,
-            subset='train',
-            transform_generator=transform_generator,
-            **common_args
-        )
-
-        validation_generator = KittiGenerator(
-            args.kitti_path,
-            subset='val',
-            **common_args
-        )
-    elif args.dataset_type == 'lung':
-        def preprocess_image(image):
-            """ Preprocess image and its annotations.
-            """
-            MEAN, STD = 174., 825.
-            # image = (image - image.mean()) / image.std()
-            image = (image - MEAN) / STD
-            return image
-
-        train_generator = LungGenerator(
-            set_name='train',
-            **{
-                'batch_size'       : args.batch_size,
-                'image_min_side'   : args.image_min_side,
-                'image_max_side'   : args.image_max_side,
-                'preprocess_image' : preprocess_image,
-            }
-        )
-
-        validation_generator = LungGenerator(
-            set_name='valid',
-            **{
-                'batch_size'       : args.batch_size,
-                'image_min_side'   : args.image_min_side,
-                'image_max_side'   : args.image_max_side,
-                'preprocess_image' : preprocess_image,
-            }
-        )
+    if args.dataset_type == 'lung':
+        train_generator = LungGenerator(set_name='train')
+        validation_generator = LungGenerator(set_name='valid')
     else:
         raise ValueError('Invalid data type received: {}'.format(args.dataset_type))
 
@@ -362,12 +215,10 @@ def check_args(parsed_args):
             "Batch size ({}) must be equal to or higher than the number of GPUs ({})".format(parsed_args.batch_size,
                                                                                              parsed_args.multi_gpu))
 
-    '''
     if parsed_args.multi_gpu > 1 and parsed_args.snapshot:
         raise ValueError(
             "Multi GPU training ({}) and resuming from snapshots ({}) is not supported.".format(parsed_args.multi_gpu,
                                                                                                 parsed_args.snapshot))
-    '''
 
     if parsed_args.multi_gpu > 1 and not parsed_args.multi_gpu_force:
         raise ValueError("Multi-GPU support is experimental, use at own risk! Run with --multi-gpu-force if you wish to continue.")
@@ -384,15 +235,6 @@ def parse_args(args):
     parser     = argparse.ArgumentParser(description='Simple training script for training a RetinaNet network.')
     subparsers = parser.add_subparsers(help='Arguments for specific dataset types.', dest='dataset_type')
     subparsers.required = True
-
-    coco_parser = subparsers.add_parser('coco')
-    coco_parser.add_argument('coco_path', help='Path to dataset directory (ie. /tmp/COCO).')
-
-    pascal_parser = subparsers.add_parser('pascal')
-    pascal_parser.add_argument('pascal_path', help='Path to dataset directory (ie. /tmp/VOCdevkit).')
-
-    kitti_parser = subparsers.add_parser('kitti')
-    kitti_parser.add_argument('kitti_path', help='Path to dataset directory (ie. /tmp/kitti).')
 
     lung_parser = subparsers.add_parser('lung')
     # lung_parser.add_argument('lung_path', help='Path to dataset directory (ie. /tmp/IDRI_LIDC).')
@@ -418,7 +260,7 @@ def parse_args(args):
     group.add_argument('--weights',           help='Initialize the model with weights from a file.')
     group.add_argument('--no-weights',        help='Don\'t initialize the model with any weights.', dest='imagenet_weights', action='store_const', const=False)
 
-    parser.add_argument('--backbone',        help='Backbone model used by retinanet.', default='resnet50', type=str)
+    parser.add_argument('--backbone',        help='Backbone model used by retinanet.', default='p3d', type=str)
     parser.add_argument('--batch-size',      help='Size of the batches.', default=1, type=int)
     parser.add_argument('--gpu',             help='Id of the GPU to use (as reported by nvidia-smi).')
     parser.add_argument('--multi-gpu',       help='Number of GPUs to use for parallel processing.', type=int, default=0)
@@ -482,12 +324,6 @@ def main(args=None):
 
     # print model summary
     print(model.summary())
-
-    # this lets the generator compute backbone layer shapes using the actual backbone model
-    if 'vgg' in args.backbone or 'densenet' in args.backbone:
-        train_generator.compute_shapes = make_shapes_callback(model)
-        if validation_generator:
-            validation_generator.compute_shapes = train_generator.compute_shapes
 
     # create the callbacks
     callbacks = create_callbacks(

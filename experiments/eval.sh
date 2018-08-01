@@ -5,5 +5,6 @@ python3 evaluate.py\
             --score-threshold 0.05\
             --save-path valid_vis\
             --backbone p3d\
+            --index -1\
             --convert-model $1
-# CUDA_VISIBLE_DEVICES="" 
+# CUDA_VISIBLE_DEVICES=""

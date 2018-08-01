@@ -73,7 +73,11 @@ class LungGenerator(Generator):
             self.valid_size = min(200, infos['valid_size'])
             self.random_index = np.random.choice(int(infos['valid_size']), size=self.valid_size, replace=False)
 
-        super(LungGenerator, self).__init__(**dict(kwargs, group_method='random', preprocess_image=preprocess_image))
+        super(LungGenerator, self).__init__(**dict(kwargs,
+                                                    group_method='random',
+                                                    preprocess_image=preprocess_image,
+                                                    image_min_side=0,
+                                                    image_max_side=0))
 
     def size(self):
         if self.set_name == 'valid':
