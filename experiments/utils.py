@@ -60,7 +60,7 @@ def get_dicom_volume(folder_path):
 
     return images2volume(images) # convert images to volume
 
-def get_patches(scan, z_patch=16, negative_ratio=-1., verbose=False):
+def get_patches(scan, z_patch=16, verbose=False):
     def get_max_bboxes(nods):
         max_bboxes = list()
         for nod in nods:
@@ -96,7 +96,7 @@ def get_patches(scan, z_patch=16, negative_ratio=-1., verbose=False):
 
     for z in range(z_patch//2, volume.shape[2]-z_patch//2):
         selected_bboxes = bboxes_contain_z(z, bboxes)
-        if np.random.random() < negative_ratio or len(selected_bboxes):
+        if len(selected_bboxes):
             X.append(volume[:,:, z-z_patch//2: z+z_patch//2])
             y.append(generate_labels(selected_bboxes))
 

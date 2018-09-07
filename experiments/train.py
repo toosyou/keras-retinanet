@@ -109,7 +109,7 @@ def create_models(backbone_retinanet, num_classes, weights, multi_gpu=0, freeze_
             'regression'    : losses.smooth_l1(),
             'classification': losses.focal()
         },
-        optimizer=keras.optimizers.adam()# lr=1e-5, clipnorm=0.001)
+        optimizer=keras.optimizers.adam(amsgrad=True)# lr=1e-5, clipnorm=0.001)
     )
 
     return model, training_model, prediction_model
@@ -168,16 +168,18 @@ def create_callbacks(model, training_model, prediction_model, validation_generat
         checkpoint = RedirectModel(checkpoint, model)
         callbacks.append(checkpoint)
 
+
     callbacks.append(keras.callbacks.ReduceLROnPlateau(
         monitor  = 'loss',
         factor   = 0.1,
-        patience = 5,
+        patience = 10,
         verbose  = 1,
         mode     = 'auto',
         epsilon  = 0.0001,
         cooldown = 5,
         min_lr   = 0
     ))
+
 
     return callbacks
 
@@ -190,8 +192,8 @@ def create_generators(args, preprocess_image):
         preprocess_image : Function that preprocesses an image for the network.
     """
     if args.dataset_type == 'lung':
-        train_generator = LungGenerator(set_name='train')
-        validation_generator = LungGenerator(set_name='valid')
+        train_generator = LungGenerator(set_name='train', batch_size=args.batch_size)
+        validation_generator = LungGenerator(set_name='valid', batch_size=args.batch_size)
     else:
         raise ValueError('Invalid data type received: {}'.format(args.dataset_type))
 

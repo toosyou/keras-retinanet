@@ -21,18 +21,21 @@ from . import coord
 
 from .. import initializers
 from .. import layers
+from ..layers.group_norm import GroupNormalization
+from ..layers.convp3d import ConvP3D
 
 import numpy as np
 
-PYRAMID_FEATURE_SIZE = 64
-CLASSIFICATION_FEATURE_SIZE = 64
-REGRESSION_FEATURE_SIZE = 64
+BASE_FEATURE_SIZE = 128
+PYRAMID_FEATURE_SIZE = BASE_FEATURE_SIZE
+CLASSIFICATION_FEATURE_SIZE = BASE_FEATURE_SIZE
+REGRESSION_FEATURE_SIZE = BASE_FEATURE_SIZE
 
 def default_classification_model(
     num_classes,
     num_anchors,
     pyramid_feature_size=PYRAMID_FEATURE_SIZE,
-    prior_probability=0.002,
+    prior_probability=0.01,
     classification_feature_size=CLASSIFICATION_FEATURE_SIZE,
     name='classification_submodel'
 ):
@@ -133,90 +136,44 @@ def __create_pyramid_features3D(C1, C2, C3, C4, feature_size=PYRAMID_FEATURE_SIZ
     Returns
         A list of feature levels [P1, P2, P3, P4].
     """
-    def ConvP3D(filters):
-        def f(x):
-            x = keras.layers.Conv3D(
-                            filters=filters,
-                            kernel_size=(3, 3, 1),
-                            padding='same'
-                            )(x)
-            x = keras.layers.Conv3D(
-                            filters=filters,
-                            kernel_size=(1, 1, 3),
-                            padding='same'
-                            )(x)
-            return x
-        return f
-
     # upsample C4 to get P4 from the FPN paper
     P4           = keras.layers.Conv3D(feature_size, kernel_size=1, strides=1, padding='same', name='C4_reduced')(C4)
     P4_upsampled = keras.layers.UpSampling3D(name='P4_upsampled')(P4)
-    P4           = ConvP3D(feature_size)(P4) # (32, 32, 1, ?)
+    P4           = keras.layers.Conv3D(feature_size, kernel_size=3, strides=1, padding='same')(P4) # (32, 32, 1, ?)
 
     # upsample C3 to get P3 from the FPN paper
     P3           = keras.layers.Conv3D(feature_size, kernel_size=1, strides=1, padding='same', name='C3_reduced')(C3)
     P3           = keras.layers.Add(name='P3_merged')([P4_upsampled, P3])
     P3_upsampled = keras.layers.UpSampling3D(name='P3_upsampled')(P3)
-    P3           = ConvP3D(feature_size)(P3) # (64, 64, 2 ?)
+    P3           = keras.layers.Conv3D(feature_size, kernel_size=3, strides=1, padding='same')(P3) # (64, 64, 2 ?)
 
     # add P3 elementwise to C2
     P2           = keras.layers.Conv3D(feature_size, kernel_size=1, strides=1, padding='same', name='C2_reduced')(C2)
     P2           = keras.layers.Add(name='P2_merged')([P3_upsampled, P2])
     P2_upsampled = keras.layers.UpSampling3D(name='P2_upsampled')(P2)
-    P2           = ConvP3D(feature_size)(P2) # (128, 128, 4, ?)
+    P2           = keras.layers.Conv3D(feature_size, kernel_size=3, strides=1, padding='same')(P2) # (128, 128, 4, ?)
 
     # add P2 elementwise to C1
     P1           = keras.layers.Conv3D(feature_size, kernel_size=1, strides=1, padding='same', name='C1_reduced')(C1)
     P1           = keras.layers.Add(name='P1_merged')([P2_upsampled, P1])
-    P1           = ConvP3D(feature_size)(P1) # (256, 256, 8, ?)
+    P1           = keras.layers.Conv3D(feature_size, kernel_size=3, strides=1, padding='same')(P1) # (256, 256, 8, ?)
+
+    return __create_pyramid_final([P1, P2, P3, P4], feature_size)
+
+def __create_pyramid_final(features, feature_size=PYRAMID_FEATURE_SIZE):
+    P1, P2, P3, P4 = features
 
     P1 = keras.layers.MaxPool3D(pool_size=(1, 1, 8), padding='same', name='P1_maxpooled')(P1)
     P2 = keras.layers.MaxPool3D(pool_size=(1, 1, 4), padding='same', name='P2_maxpooled')(P2)
     P3 = keras.layers.MaxPool3D(pool_size=(1, 1, 2), padding='same', name='P3_maxpooled')(P3)
 
+    print(P1, P2, P3)
+
     P1 = keras.layers.Reshape((256, 256, -1), name='P1')(P1)
     P2 = keras.layers.Reshape((128, 128, -1), name='P2')(P2)
     P3 = keras.layers.Reshape((64, 64, -1), name='P3')(P3)
     P4 = keras.layers.Reshape((32, 32, -1), name='P4')(P4)
-
     return [P1, P2, P3, P4]
-
-def __create_pyramid_features(C2, C3, C4, feature_size=64):
-    """ Creates the FPN layers on top of the backbone features.
-
-    Args
-        C2           : Feature stage C2 from the backbone.
-        C3           : Feature stage C3 from the backbone.
-        C4           : Feature stage C4 from the backbone.
-        feature_size : The feature size to use for the resulting feature levels.
-
-    Returns
-        A list of feature levels [P2, P3, P4, P5, P6].
-    """
-    # upsample C4 to get P4 from the FPN paper
-    P4           = keras.layers.Conv2D(feature_size, kernel_size=1, strides=1, padding='same', name='C4_reduced')(C4)
-    P4_upsampled = layers.UpsampleLike(name='P4_upsampled')([P4, C3])
-    P4           = keras.layers.Conv2D(feature_size, kernel_size=3, strides=1, padding='same', name='P4')(P4)
-
-    # add P4 elementwise to C3
-    P3           = keras.layers.Conv2D(feature_size, kernel_size=1, strides=1, padding='same', name='C3_reduced')(C3)
-    P3           = keras.layers.Add(name='P3_merged')([P4_upsampled, P3])
-    P3_upsampled = layers.UpsampleLike(name='P3_upsampled')([P3, C2])
-    P3           = keras.layers.Conv2D(feature_size, kernel_size=3, strides=1, padding='same', name='P3')(P3)
-
-    # add P3 elementwise to C2
-    P2 = keras.layers.Conv2D(feature_size, kernel_size=1, strides=1, padding='same', name='C2_reduced')(C2)
-    P2 = keras.layers.Add(name='P2_merged')([P3_upsampled, P2])
-    P2 = keras.layers.Conv2D(feature_size, kernel_size=3, strides=1, padding='same', name='P2')(P2)
-
-    # "P5 is obtained via a 3x3 stride-2 conv on C4"
-    P5 = keras.layers.Conv2D(feature_size, kernel_size=3, strides=2, padding='same', name='P5')(C4)
-
-    # "P6 is computed by applying ReLU followed by a 3x3 stride-2 conv on P5"
-    # P6 = keras.layers.Activation('relu', name='C6_relu')(P5)
-    # P6 = keras.layers.Conv2D(feature_size, kernel_size=3, strides=2, padding='same', name='P6')(P6)
-
-    return [P2, P3, P4, P5]# , P6]
 
 
 class AnchorParameters:

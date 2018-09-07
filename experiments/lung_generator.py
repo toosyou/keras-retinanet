@@ -76,8 +76,8 @@ class LungGenerator(Generator):
         super(LungGenerator, self).__init__(**dict(kwargs,
                                                     group_method='random',
                                                     preprocess_image=preprocess_image,
-                                                    image_min_side=0,
-                                                    image_max_side=0))
+                                                    image_min_side=800,
+                                                    image_max_side=1333))
 
     def size(self):
         if self.set_name == 'valid':
