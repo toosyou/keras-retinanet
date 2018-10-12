@@ -2,7 +2,7 @@ import sys
 import os
 import configparser
 
-sys.path.append('../../LungTumor/')
+sys.path.append('../../../LungTumor/')
 import data_util
 
 import pylidc as pl
