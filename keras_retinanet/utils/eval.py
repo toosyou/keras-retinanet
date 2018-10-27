@@ -23,6 +23,7 @@ import numpy as np
 import os
 
 import cv2
+from tqdm import tqdm
 
 
 def _compute_ap(recall, precision):
@@ -54,7 +55,7 @@ def _compute_ap(recall, precision):
     return ap
 
 
-def _get_detections(generator, model, score_threshold=0.05, max_detections=100, save_path=None, do_draw_annotations=True, window_leveling=False):
+def _get_detections(generator, model, score_threshold=0.05, max_detections=100, save_path=None, verbose=True, do_draw_annotations=True):
     """ Get the detections from the model using the generator.
 
     The result is a list of lists such that the size is:
@@ -71,15 +72,8 @@ def _get_detections(generator, model, score_threshold=0.05, max_detections=100, 
     """
     def normalized_image(raw_image):
         raw_image = raw_image[...,raw_image.shape[-2]//2, 0]
-        if window_leveling:
-            raw_image = np.where(raw_image > -1400., raw_image, -1400.)
-            raw_image = np.where(raw_image < 200., raw_image, 200.)
-            raw_image = (raw_image + 1400.)
-            raw_image = raw_image * 255. / 1600.
-
-        else:
-            raw_image = (raw_image - raw_image.min())
-            raw_image = raw_image / raw_image.max() * 255.0
+        raw_image = (raw_image - raw_image.min())
+        raw_image = raw_image / raw_image.max() * 255.0
 
         raw_image = np.hstack((raw_image, raw_image))
         raw_image = np.repeat(np.expand_dims(raw_image, 2), 3, axis=2) # to rgb
@@ -88,7 +82,7 @@ def _get_detections(generator, model, score_threshold=0.05, max_detections=100, 
 
     all_detections = [[None for i in range(generator.num_classes())] for j in range(generator.size())]
 
-    for i in range(generator.size()):
+    for i in tqdm(range(generator.size()), disable=not verbose):
         raw_image    = generator.load_image(i)
         image        = generator.preprocess_image(raw_image.copy())
         image, scale = generator.resize_image(image)
@@ -125,8 +119,6 @@ def _get_detections(generator, model, score_threshold=0.05, max_detections=100, 
         # copy detections to all_detections
         for label in range(generator.num_classes()):
             all_detections[i][label] = image_detections[image_detections[:, -1] == label, :-1]
-
-        print('{}/{}'.format(i + 1, generator.size()), end='\r')
 
     return all_detections
 

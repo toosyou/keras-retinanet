@@ -10,19 +10,16 @@ from keras.models import Model
 from keras.optimizers import Adam
 from keras.backend.tensorflow_backend import set_session
 
-def focal_loss(alpha=.25, gamma=2.):
-    def focal_loss_fixed(y_true, y_pred):
-        y_true = K.flatten(y_true)
-        y_pred = K.flatten(y_pred)
+sys.path.append('/home/toosyou/projects/keras-retinanet')
+from keras_retinanet import initializers
 
-        alpha_factor = keras.backend.ones_like(y_true) * alpha
-        alpha_factor = tf.where(keras.backend.equal(y_true, 1), alpha_factor, 1 - alpha_factor)
-        focal_weight = tf.where(keras.backend.equal(y_true, 1), 1 - y_pred, y_pred)
-        focal_weight = alpha_factor * focal_weight ** gamma
-
-        cls_loss = focal_weight * K.binary_crossentropy(y_true, y_pred)
-
-        return  K.sum(cls_loss) / K.sum(y_true)
+def focal_loss(gamma=2, alpha=0.75):
+    def focal_loss_fixed(y_true, y_pred):#with tensorflow
+        eps = 1e-12
+        y_pred=K.clip(y_pred,eps,1.-eps)#improve the stability of the focal loss and see issues 1 for more information
+        pt_1 = tf.where(tf.equal(y_true, 1), y_pred, tf.ones_like(y_pred))
+        # pt_0 = tf.where(tf.equal(y_true, 0), y_pred, tf.zeros_like(y_pred))
+        return -K.sum(alpha * K.pow(1. - pt_1, gamma) * K.log(pt_1))# -K.sum((1-alpha) * K.pow( pt_0, gamma) * K.log(1. - pt_0))
     return focal_loss_fixed
 
 def get_unet_model(number_filter_base = 16):
@@ -66,13 +63,14 @@ def get_unet_model(number_filter_base = 16):
     net = Conv3D(number_filter_base*8, 3, activation='relu', padding='same')(net)
     net = BatchNormalization()(net)
     net = Conv3D(number_filter_base*8, 3, activation='relu', padding='same')(net)
-    net = GlobalMaxPooling3D()(net)
+    # net = GlobalMaxPooling3D()(net)
+    net = GlobalAvgPool3D()(net)
     net = BatchNormalization()(net)
     net = Dense(2, activation='softmax')(net)
 
     model = Model(inputs=inputs, outputs=net)
     training_model = keras.utils.multi_gpu_model(model, gpus=2)
-    training_model.compile(optimizer=Adam(amsgrad=True), loss='binary_crossentropy', metrics=['accuracy'])
+    training_model.compile(optimizer=Adam(amsgrad=True), loss=focal_loss(alpha=0.9, gamma=2.), metrics=['accuracy'])
     return model, training_model
 
 def get_model():
@@ -112,7 +110,8 @@ def get_model():
         # BatchNormalization(),
         # MaxPooling3D((2, 2, 1), padding='same'), # 2, 2, 1, ?
 
-        GlobalMaxPooling3D(), # number_filter_base*16
+        # GlobalMaxPooling3D(), # number_filter_base*16
+        GlobalAvgPool3D(),
         # Flatten(),
         # Dense(512, activation='relu'),
         # Dropout(rate=0.2),
@@ -126,7 +125,7 @@ def get_model():
         Dense(2, activation='softmax')
     ])
     training_model = keras.utils.multi_gpu_model(model, gpus=2)
-    training_model.compile(optimizer='sgd', loss='binary_crossentropy', metrics=['accuracy'])
+    training_model.compile(optimizer=Adam(amsgrad=True), loss=focal_loss(alpha=0.9, gamma=2), metrics=['accuracy'])
     return model, training_model
 
 if __name__ == '__main__':

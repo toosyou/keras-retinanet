@@ -10,6 +10,7 @@ import time
 import better_exceptions
 from contextlib import closing
 from multiprocess import Pool
+import cProfile
 
 # turn off futurn warning
 import warnings
@@ -21,8 +22,8 @@ from preprocessing import scan_index_split
 sys.path.append('/home/toosyou/projects/LungTumor')
 import data_util
 
-LIDC_IDRI_NP_PREFIX = '/mnt/ext3/lidc_idri_np'
-LIDC_IDRI_BATCHES_PREFIX = '/mnt/ext/lidc_idri_batches'
+LIDC_IDRI_NP_PREFIX = '/mnt/ext/lidc_idri_np'
+LIDC_IDRI_BATCHES_PREFIX = '/mnt/ext3/lidc_idri_batches'
 
 def generate_volume_mask():
     scans = pl.query(pl.Scan).filter()
@@ -93,51 +94,66 @@ def random_flip(patch):
             patch = np.flip(patch, i)
     return patch
 
+def get_patches(volume, size, is_positive, lung_mask, nodule_mask, layer_probability, patch_size=(64, 64, 16)):
+    def extract_patch(volume, mask, x, y, z, patch_size=patch_size):
+        """
+        xs = np.arange(-patch_size[0]//2, patch_size[0]//2, dtype=np.int) + x
+        ys = np.arange(-patch_size[1]//2, patch_size[1]//2, dtype=np.int) + y
+        zs = np.arange(-patch_size[2]//2, patch_size[2]//2, dtype=np.int) + z
+
+        patch = volume.take( xs, mode='wrap', axis=0).take(
+                            ys, mode='wrap', axis=1).take(
+                            zs, mode='warp', axis=2)
+
+        # center
+        xs = np.arange(-patch_size[0]//4, patch_size[0]//4, dtype=np.int) + x
+        ys = np.arange(-patch_size[1]//4, patch_size[1]//4, dtype=np.int) + y
+        zs = np.arange(-patch_size[2]//4, patch_size[2]//4, dtype=np.int) + z
+
+        label = mask.take( xs, mode='wrap', axis=0).take(
+                            ys, mode='wrap', axis=1).take(
+                            zs, mode='warp', axis=2).any()
+        """
+        patch = volume[ x-patch_size[0]//2 : x+patch_size[0]//2,
+                        y-patch_size[1]//2 : y+patch_size[1]//2,
+                        z-patch_size[2]//2 : z+patch_size[2]//2 ]
+
+        label = mask[ x-patch_size[0]//4 : x+patch_size[0]//4,
+                        y-patch_size[1]//4 : y+patch_size[1]//4,
+                        z-patch_size[2]//4 : z+patch_size[2]//4].any()
+
+        if patch.shape != patch_size:
+            return None, None
+
+        patch = random_flip(patch)[..., np.newaxis]
+        return patch, label
+
+    # randomly choose one layer
+    mask = nodule_mask.astype(np.bool) if is_positive else lung_mask.astype(np.bool)
+    layer_probability = layer_probability['positive'] if is_positive\
+                                else layer_probability['negative']
+
+    indexes_z = np.random.choice(volume.shape[2], size=size, replace=True, p=layer_probability)
+    indexes_z_times = dict()
+    for z in indexes_z: # accumulate
+        indexes_z_times[z] = indexes_z_times.get(z, 0) + 1
+
+    X = list()
+    y = list()
+    for z, times in indexes_z_times.items():
+        # get size patches
+        coor_x, coor_y = np.where(mask[:,:,z])
+        for _ in range(times):
+            i = np.random.randint(len(coor_x))
+            patch, label = extract_patch(volume, nodule_mask, coor_x[i], coor_y[i], z)
+            if patch is None:
+                continue
+            X.append(patch)
+            y.append([label, 1-label])
+    X, y = np.array(X), np.array(y)
+    return X, y
+
 def patch_generator(set='train', batch_size=32, batch_per_scan=50, patch_size=(64, 64, 16)):
-    def get_patches(volume, size, is_positive, lung_mask, nodule_mask, layer_probability, patch_size=patch_size):
-        def extract_patch(volume, mask, x, y, z, patch_size=patch_size):
-            xs = np.arange(-patch_size[0]//2, patch_size[0]//2, dtype=np.int) + x
-            ys = np.arange(-patch_size[1]//2, patch_size[1]//2, dtype=np.int) + y
-            zs = np.arange(-patch_size[2]//2, patch_size[2]//2, dtype=np.int) + z
-
-            patch = volume.take( xs, mode='wrap', axis=0).take(
-                                ys, mode='wrap', axis=1).take(
-                                zs, mode='warp', axis=2)
-
-            # center
-            xs = np.arange(-patch_size[0]//4, patch_size[0]//4, dtype=np.int) + x
-            ys = np.arange(-patch_size[1]//4, patch_size[1]//4, dtype=np.int) + y
-            zs = np.arange(-patch_size[2]//4, patch_size[2]//4, dtype=np.int) + z
-
-            label = mask.take( xs, mode='wrap', axis=0).take(
-                                ys, mode='wrap', axis=1).take(
-                                zs, mode='warp', axis=2).any()
-
-            patch = random_flip(patch)[..., np.newaxis]
-            return patch, label
-
-        # randomly choose one layer
-        mask = nodule_mask.astype(np.bool) if is_positive else lung_mask.astype(np.bool)
-        layer_probability = layer_probability['positive'] if is_positive\
-                                    else layer_probability['negative']
-
-        indexes_z = np.random.choice(volume.shape[2], size=size, replace=True, p=layer_probability)
-        indexes_z_times = dict()
-        for z in indexes_z: # accumulate
-            indexes_z_times[z] = indexes_z_times.get(z, 0) + 1
-
-        X = list()
-        y = list()
-        for z, times in indexes_z_times.items():
-            # get size patches
-            coor_x, coor_y = np.where(mask[:,:,z])
-            for _ in range(times):
-                i = np.random.randint(len(coor_x))
-                patch, label = extract_patch(volume, nodule_mask, coor_x[i], coor_y[i], z)
-                X.append(patch)
-                y.append([label, 1-label])
-        return X, y
-
     # scans = pl.query(pl.Scan).filter()
     train, valid, test = scan_index_split(1018)
     if set == 'train':
@@ -182,16 +198,50 @@ def generate_batch(set, number_batch):
                 X = np.append(X, xi, axis=0)
                 y = np.append(y, yi, axis=0)
 
-        j = j+3
-        x_file_name = os.path.join('/mnt/ext/lidc_idri_batches/', set, 'X', str(j)+'.npy')
-        y_file_name = os.path.join('/mnt/ext/lidc_idri_batches/', set, 'y', str(j)+'.npy')
+        x_file_name = os.path.join(LIDC_IDRI_BATCHES_PREFIX, set, 'X', str(j)+'.npy')
+        y_file_name = os.path.join(LIDC_IDRI_BATCHES_PREFIX, set, 'y', str(j)+'.npy')
         np.save(x_file_name, X)
         np.save(y_file_name, y)
 
         X, y = np.ndarray((0, 64, 64, 16, 1), dtype=np.float), np.ndarray((0, 2), dtype=np.float)
 
+def _mp_get_positive_batch(index_scan):
+    try:
+        volume, lung_mask, nodule_mask, layer_probability = get_scan(index_scan)
+        positive_patches, _ = get_patches(volume, 64, True, lung_mask, nodule_mask, layer_probability)
+        return positive_patches
+    except:
+        return np.ndarray((0, 64, 64, 16, 1), dtype=np.float)
+
+def generate_positive_batch(set):
+    os.makedirs(LIDC_IDRI_BATCHES_PREFIX, exist_ok=True)
+    os.makedirs(os.path.join(LIDC_IDRI_BATCHES_PREFIX, set), exist_ok=True)
+
+    indexes = scan_index_split(1018)[{'train': 0, 'valid': 1, 'test': 2}[set]]
+
+    X = np.ndarray((0, 64, 64, 16, 1), dtype=np.float)
+    with closing(Pool(processes=2)) as workers:
+        for positive_patches in tqdm(workers.imap(_mp_get_positive_batch, indexes), desc='generate_positive_batch', total=len(indexes)):
+            X = np.append(X, positive_patches, axis=0)
+
+    filename = os.path.join(LIDC_IDRI_BATCHES_PREFIX, set, 'positive.npy')
+    np.save(filename, X)
+    return None
+
 if __name__ == '__main__':
-    train, valid, test = scan_index_split(1018)
-    print(len(train), len(valid), len(test))
-    generate_batch('train', 14)
-    generate_batch('valid', 1)
+    volume, lung_mask, nodule_mask, layer_probability = get_scan(0)
+    print(volume.shape)
+    cProfile.run("""get_patches(volume=volume,
+                    size=1024,
+                    is_positive=False,
+                    lung_mask=lung_mask,
+                    nodule_mask=nodule_mask,
+                    layer_probability=layer_probability,
+                    patch_size=(64, 64, 16))
+    """)
+    # generate_positive_batch('train')
+    # generate_positive_batch('valid')
+    # train, valid, test = scan_index_split(1018)
+    # print(len(train), len(valid), len(test))
+    # generate_batch('train', 14)
+    # generate_batch('valid', 1)
