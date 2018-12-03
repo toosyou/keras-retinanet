@@ -60,20 +60,7 @@ def get_dicom_volume(folder_path):
 
     return images2volume(images) # convert images to volume
 
-def get_patches(scan, z_patch=16, verbose=False):
-    def get_max_bboxes(nods):
-        max_bboxes = list()
-        for nod in nods:
-            max_bbox = [np.Inf, -np.Inf, np.Inf, -np.Inf, np.Inf, -np.Inf]
-            for annotation in nod:
-                bbox = annotation.bbox()
-                # update max_bbox
-                for i in range(3):
-                    max_bbox[i*2] = min(max_bbox[i*2], int(bbox[i].start))
-                    max_bbox[i*2+1] = max(max_bbox[i*2+1], int(bbox[i].stop))
-            max_bboxes.append(max_bbox)
-        return max_bboxes
-
+def get_patches(index_scan, include_negative=False, randomly_select=False, z_patch=16, verbose=False):
     def bboxes_contain_z(z, bboxes):
         selected = list()
         for bbox in bboxes:
@@ -88,15 +75,32 @@ def get_patches(scan, z_patch=16, verbose=False):
         return labels
 
     X, y = list(), list()
-    volume = scan.to_volume(verbose=False)
+    if os.path.isfile(os.path.join('/mnt/ext/lidc_idri_np', str(index_scan), 'volume.npy')):
+        if randomly_select:
+            volume = np.load(os.path.join('/mnt/ext/lidc_idri_np', str(index_scan), 'volume.npy'), mmap_mode='r')
+        else:
+            volume = np.load(os.path.join('/mnt/ext/lidc_idri_np', str(index_scan), 'volume.npy'))
+        bboxes = np.load(os.path.join('/mnt/ext/lidc_idri_np', str(index_scan), 'bboxes.npy'))
+    else:
+        return None, None
     # lung_mask = data_util.lung_mask(volume, times_dilation=20, times_erosion=15, verbose=verbose)
     # volume[lung_mask < 0.5] = volume.min()
-    nods = scan.cluster_annotations()
-    bboxes = get_max_bboxes(nods)
 
-    for z in range(z_patch//2, volume.shape[2]-z_patch//2):
+    if randomly_select:
+        if include_negative:
+            zs = [np.random.randint(z_patch//2, volume.shape[2]-z_patch//2)]
+        else:
+            positive_zs = list()
+            for z in range(z_patch//2, volume.shape[2]-z_patch//2):
+                selected_bboxes = bboxes_contain_z(z, bboxes)
+                if len(selected_bboxes): positive_zs.append(z)
+            zs = [np.random.choice(positive_zs)]
+    else:
+        zs = list(range(z_patch//2, volume.shape[2]-z_patch//2))
+
+    for z in zs:
         selected_bboxes = bboxes_contain_z(z, bboxes)
-        if len(selected_bboxes):
+        if include_negative or len(selected_bboxes):
             X.append(volume[:,:, z-z_patch//2: z+z_patch//2])
             y.append(generate_labels(selected_bboxes))
 

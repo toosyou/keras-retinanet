@@ -4,6 +4,8 @@ import numpy as np
 import keras
 import tensorflow as tf
 from tqdm import tqdm
+import keras
+from keras import Model
 from keras.backend.tensorflow_backend import set_session
 from preprocessing import scan_index_split
 from keras.models import load_model
@@ -20,7 +22,8 @@ FAST_DETECTION_PARM = {
     'convert_model': True
 }
 
-FPR_MODEL_PATH = 'fp_reduction/working_models/conv3d_amsgrad_rop_v2_098.h5'
+# FPR_MODEL_PATH = 'fp_reduction/working_models/v3_conv3d_amsgrad_099.h5'
+FPR_MODEL_PATH = 'fp_reduction/model_checkpoints/95.h5'
 
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
@@ -32,9 +35,9 @@ def generate_fpr_batch(volume, boxes, z):
         ys = np.arange(-patch_size[1]//2, patch_size[1]//2, dtype=np.int) + y
         zs = np.arange(-patch_size[2]//2, patch_size[2]//2, dtype=np.int) + z
 
-        patch = volume.take( xs, mode='wrap', axis=0).take(
-                            ys, mode='wrap', axis=1).take(
-                            zs, mode='warp', axis=2)
+        patch = volume.take( ys, mode='wrap', axis=0).take(
+                                xs, mode='wrap', axis=1).take(
+                                zs, mode='warp', axis=2)
         return patch
 
     batch = list()
@@ -99,11 +102,11 @@ def predict(set, index):
     fast_detection_model = models.load_model(
                             FAST_DETECTION_PARM['path'],
                             backbone_name=FAST_DETECTION_PARM['backbone'],
+                            nms=True,
                             convert=FAST_DETECTION_PARM['convert_model'])
     # fast_detection_model.summary()
 
     fpr_model = load_model(FPR_MODEL_PATH)
-    # fpr_model.summary()
 
     fpr_model = keras.utils.multi_gpu_model(fpr_model)
 
@@ -112,7 +115,7 @@ def predict(set, index):
                             generator=fast_detection_generator,
                             model=fast_detection_model,
                             score_threshold=0.05,
-                            max_detections=60,
+                            max_detections=30,
                             verbose=True,
                             save_path=None,
                             do_draw_annotations=False)

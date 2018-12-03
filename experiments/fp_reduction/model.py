@@ -125,7 +125,7 @@ def get_model():
         Dense(2, activation='softmax')
     ])
     training_model = keras.utils.multi_gpu_model(model, gpus=2)
-    training_model.compile(optimizer=Adam(amsgrad=True), loss=focal_loss(alpha=0.9, gamma=2), metrics=['accuracy'])
+    training_model.compile(optimizer=Adam(amsgrad=True), loss='binary_crossentropy', metrics=['accuracy'])
     return model, training_model
 
 if __name__ == '__main__':

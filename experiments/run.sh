@@ -1,4 +1,5 @@
 #!/bin/bash
+rm -rf logs/*.mip1070
 TF_CPP_MIN_LOG_LEVEL=2 python3 train.py\
         --multi-gpu 2\
         --batch-size 4\

@@ -3,6 +3,7 @@ import sys
 import pylidc as pl
 from tqdm import tqdm
 import numpy as np
+from pathlib import Path
 import pickle
 import random
 from sklearn.utils import shuffle
@@ -17,7 +18,11 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 sys.path.append('../')
+sys.path.append('/home/toosyou/projects/keras-retinanet/')
 from preprocessing import scan_index_split
+from keras_retinanet import models
+from scan_evaluate import ScanGenerator
+from keras_retinanet.utils.eval import _get_detections as get_fast_detection
 
 sys.path.append('/home/toosyou/projects/LungTumor')
 import data_util
@@ -94,39 +99,25 @@ def random_flip(patch):
             patch = np.flip(patch, i)
     return patch
 
+def extract_patch(volume, mask, x, y, z, patch_size=(64, 64, 16), do_random_flip=True):
+    patch = volume[ x-patch_size[0]//2 : x+patch_size[0]//2,
+                    y-patch_size[1]//2 : y+patch_size[1]//2,
+                    z-patch_size[2]//2 : z+patch_size[2]//2 ]
+
+    label = mask[ x-patch_size[0]//4 : x+patch_size[0]//4,
+                    y-patch_size[1]//4 : y+patch_size[1]//4,
+                    z-patch_size[2]//4 : z+patch_size[2]//4].any()
+
+    if patch.shape != patch_size:
+        return None, None
+
+    if do_random_flip:
+        patch = random_flip(patch)
+
+    patch = patch[..., np.newaxis]
+    return patch, label
+
 def get_patches(volume, size, is_positive, lung_mask, nodule_mask, layer_probability, patch_size=(64, 64, 16)):
-    def extract_patch(volume, mask, x, y, z, patch_size=patch_size):
-        """
-        xs = np.arange(-patch_size[0]//2, patch_size[0]//2, dtype=np.int) + x
-        ys = np.arange(-patch_size[1]//2, patch_size[1]//2, dtype=np.int) + y
-        zs = np.arange(-patch_size[2]//2, patch_size[2]//2, dtype=np.int) + z
-
-        patch = volume.take( xs, mode='wrap', axis=0).take(
-                            ys, mode='wrap', axis=1).take(
-                            zs, mode='warp', axis=2)
-
-        # center
-        xs = np.arange(-patch_size[0]//4, patch_size[0]//4, dtype=np.int) + x
-        ys = np.arange(-patch_size[1]//4, patch_size[1]//4, dtype=np.int) + y
-        zs = np.arange(-patch_size[2]//4, patch_size[2]//4, dtype=np.int) + z
-
-        label = mask.take( xs, mode='wrap', axis=0).take(
-                            ys, mode='wrap', axis=1).take(
-                            zs, mode='warp', axis=2).any()
-        """
-        patch = volume[ x-patch_size[0]//2 : x+patch_size[0]//2,
-                        y-patch_size[1]//2 : y+patch_size[1]//2,
-                        z-patch_size[2]//2 : z+patch_size[2]//2 ]
-
-        label = mask[ x-patch_size[0]//4 : x+patch_size[0]//4,
-                        y-patch_size[1]//4 : y+patch_size[1]//4,
-                        z-patch_size[2]//4 : z+patch_size[2]//4].any()
-
-        if patch.shape != patch_size:
-            return None, None
-
-        patch = random_flip(patch)[..., np.newaxis]
-        return patch, label
 
     # randomly choose one layer
     mask = nodule_mask.astype(np.bool) if is_positive else lung_mask.astype(np.bool)
@@ -228,17 +219,61 @@ def generate_positive_batch(set):
     np.save(filename, X)
     return None
 
+def generate_negative_detections(set, model_path):
+    os.makedirs(LIDC_IDRI_BATCHES_PREFIX, exist_ok=True)
+    os.makedirs(os.path.join(LIDC_IDRI_BATCHES_PREFIX, set), exist_ok=True)
+
+    indexes = scan_index_split(1018)[{'train': 0, 'valid': 1, 'test': 2}[set]]
+
+    # load fast-detection model to generate false positive patches
+    print('Loading model, this may take a second...')
+    fast_detection_model = models.load_model(
+                            model_path,
+                            'p3d',
+                            nms=True,
+                            convert=True)
+
+    all_detections = dict()
+    for index_scan in tqdm(indexes, desc='generate_negative_detections'):
+        scan_detections = list()
+        # load scan
+        volume, lung_mask, nodule_mask, layer_probability = get_scan(index_scan)
+        if volume is None:
+            continue
+
+        fast_detection_generator = ScanGenerator(volume)
+        fast_detections = get_fast_detection(
+                            generator=fast_detection_generator,
+                            model=fast_detection_model,
+                            score_threshold=0.05,
+                            max_detections=30,
+                            verbose=True,
+                            save_path=None,
+                            do_draw_annotations=False)
+
+        for z in np.arange(len(fast_detections)) + 8:
+            for d in fast_detections[z-8][0]:
+                scan_detections.append([d[0], d[1], d[2] ,d[3], z, d[4]])
+        all_detections[index_scan] = scan_detections
+
+    filename = os.path.join(LIDC_IDRI_BATCHES_PREFIX, set, 'all_detections.pl')
+    with open(filename, 'wb') as out_pl:
+        pickle.dump(all_detections, out_pl)
+    return None
+
 if __name__ == '__main__':
-    volume, lung_mask, nodule_mask, layer_probability = get_scan(0)
-    print(volume.shape)
-    cProfile.run("""get_patches(volume=volume,
-                    size=1024,
-                    is_positive=False,
-                    lung_mask=lung_mask,
-                    nodule_mask=nodule_mask,
-                    layer_probability=layer_probability,
-                    patch_size=(64, 64, 16))
-    """)
+    generate_negative_detections('train', '/home/toosyou/projects/keras-retinanet/experiments/working_models/augmented_smallanchor64.h5')
+    generate_negative_detections('valid', '/home/toosyou/projects/keras-retinanet/experiments/working_models/augmented_smallanchor64.h5')
+    # volume, lung_mask, nodule_mask, layer_probability = get_scan(0)
+    # print(volume.shape)
+    # cProfile.run("""get_patches(volume=volume,
+    #                 size=1024,
+    #                 is_positive=False,
+    #                 lung_mask=lung_mask,
+    #                 nodule_mask=nodule_mask,
+    #                 layer_probability=layer_probability,
+    #                 patch_size=(64, 64, 16))
+    # """)
     # generate_positive_batch('train')
     # generate_positive_batch('valid')
     # train, valid, test = scan_index_split(1018)
