@@ -26,7 +26,7 @@ def filter_detections(
     nms                   = True,
     score_threshold       = 0.05,
     max_detections        = 300,
-    nms_threshold         = 0.5
+    nms_threshold         = 0.3
 ):
     """ Filter detections using the boxes and classification values.
 
